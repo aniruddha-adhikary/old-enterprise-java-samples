@@ -208,9 +208,30 @@
         </javac>
     </target>
 
+    <!-- Compile demo -->
+    <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+            description="Compile demo runner">
+        <mkdir dir="${build.dir}/demo"/>
+        <javac srcdir="demo/src"
+               destdir="${build.dir}/demo"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+            </classpath>
+        </javac>
+    </target>
+
     <!-- Compile all -->
     <target name="compile" 
-            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-demo"
             description="Compile all modules"/>
 
     <!-- Package common-lib as JAR -->
@@ -279,6 +300,7 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>
     </target>

@@ -176,7 +176,7 @@ public class NotificationListener {
         try {
             conn = ConnectionHelper.getConnection();
 
-            String sql = "INSERT INTO NOTIFICATIONS (NOTIFICATION_ID, TYPE, RECIPIENT, " 
+            String sql = "INSERT INTO NOTIFICATIONS (NOTIFICATION_ID, NOTIFICATION_TYPE, RECIPIENT, " 
                     + "SUBJECT, BODY, CHANNEL, STATUS, ORDER_ID, CREATED_DATE, SENT_DATE, RETRY_COUNT) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 

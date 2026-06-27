@@ -2,21 +2,10 @@ package com.bigcorp.demo;
 
 import com.bigcorp.common.db.ConnectionHelper;
 import com.bigcorp.common.db.DatabaseBootstrap;
-import com.bigcorp.common.model.Client;
 import com.bigcorp.common.model.TradeOrder;
-import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.mq.MessageQueueHelper;
-import com.bigcorp.common.rules.Rule;
-import com.bigcorp.common.rules.RuleContext;
-import com.bigcorp.common.rules.RuleEngine;
-import com.bigcorp.common.rules.impl.MaxOrderValueRule;
-import com.bigcorp.common.rules.impl.ClientTierRule;
-import com.bigcorp.common.rules.impl.MarketHoursRule;
-import com.bigcorp.common.rules.impl.SpecialClientsRule;
-import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.tradedesk.mq.TradeMessageProducer;
 import com.bigcorp.orderengine.consumer.OrderMessageListener;
-import com.bigcorp.pricing.service.PricingServiceImpl;
 import com.bigcorp.notifications.consumer.NotificationListener;
 import com.bigcorp.settlement.batch.BatchProcessor;
 
@@ -60,14 +49,9 @@ public class DemoRunner {
             MessageQueueHelper.init();
             System.out.println("      MQ ready.");
 
-            // Step 2: Set up the rule engine
-            System.out.println("[3/6] Loading business rules...");
-            RuleEngine engine = RuleEngine.getInstance();
-            engine.addRule(new MaxOrderValueRule());
-            engine.addRule(new ClientTierRule());
-            engine.addRule(new MarketHoursRule());
-            engine.addRule(new SpecialClientsRule());
-            System.out.println("      " + engine.getRuleCount() + " rules loaded.");
+            // Step 2: Rule engine is initialized by OrderMessageListener
+            // (it's a singleton, so rules are loaded once when the listener starts)
+            System.out.println("[3/6] Business rules will be loaded by order engine...");
 
             // Step 3: Start the order engine listener in a background thread
             System.out.println("[4/6] Starting order engine...");

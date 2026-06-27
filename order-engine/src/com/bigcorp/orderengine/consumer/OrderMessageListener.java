@@ -313,18 +313,17 @@ public class OrderMessageListener {
             notif.setOrderId(order.getOrderId());
             notif.setSubject("Order Confirmation - " + order.getOrderId());
 
+            // Body uses pipe-delimited format for template substitution in EmailDispatcher
+            // Format: symbol|quantity|side|price|reason|amount|settlementDate
+            // (see EmailDispatcher.buildEmailBody for the parsing logic)
             StringBuffer body = new StringBuffer();
-            body.append("Dear ").append(client.getName()).append(",\n\n");
-            body.append("Your order has been filled:\n");
-            body.append("  Order ID: ").append(order.getOrderId()).append("\n");
-            body.append("  Symbol: ").append(order.getSymbol()).append("\n");
-            body.append("  Side: ").append(order.getSide()).append("\n");
-            body.append("  Quantity: ").append(order.getQuantity()).append("\n");
-            body.append("  Price: $").append(price).append("\n");
-            body.append("  Commission: $").append(commission).append("\n");
-            body.append("  Total: $").append((order.getQuantity() * price) + commission).append("\n");
-            body.append("\nThank you for trading with BigCorp.\n");
-            // body.append("\nDisclaimer: Past performance..."); // legal said to add this
+            body.append(order.getSymbol()).append("|");
+            body.append(order.getQuantity()).append("|");
+            body.append(order.getSide()).append("|");
+            body.append(price).append("|");
+            body.append("").append("|");  // reason (empty for confirmations)
+            body.append((order.getQuantity() * price) + commission).append("|");
+            body.append("");  // settlementDate (filled by settlement gateway)
             notif.setBody(body.toString());
 
             String notifXml = XmlHelper.marshalNotification(notif);
@@ -352,13 +351,13 @@ public class OrderMessageListener {
             notif.setOrderId(order.getOrderId());
             notif.setSubject("Order Rejected - " + order.getOrderId());
 
+            // pipe-delimited format: symbol|quantity|side|price|reason
             StringBuffer body = new StringBuffer();
-            body.append("Dear ").append(client.getName()).append(",\n\n");
-            body.append("Your order has been rejected:\n");
-            body.append("  Order ID: ").append(order.getOrderId()).append("\n");
-            body.append("  Symbol: ").append(order.getSymbol()).append("\n");
-            body.append("  Reason: ").append(reason).append("\n");
-            body.append("\nPlease contact your account manager for more information.\n");
+            body.append(order.getSymbol()).append("|");
+            body.append(order.getQuantity()).append("|");
+            body.append(order.getSide()).append("|");
+            body.append(order.getRequestedPrice()).append("|");
+            body.append(reason);
             notif.setBody(body.toString());
 
             String notifXml = XmlHelper.marshalNotification(notif);
