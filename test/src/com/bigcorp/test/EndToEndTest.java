@@ -7,12 +7,26 @@ import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.model.SettlementRecord;
 import com.bigcorp.common.model.TradeOrder;
 import com.bigcorp.common.mq.MessageQueueHelper;
+import com.bigcorp.common.rules.Rule;
+import com.bigcorp.common.rules.RuleConfigLoader;
 import com.bigcorp.common.rules.RuleContext;
 import com.bigcorp.common.rules.RuleEngine;
+import com.bigcorp.common.rules.RuleResult;
+import com.bigcorp.common.rules.TypedRule;
 import com.bigcorp.common.rules.impl.ClientTierRule;
 import com.bigcorp.common.rules.impl.MarketHoursRule;
 import com.bigcorp.common.rules.impl.MaxOrderValueRule;
+import com.bigcorp.common.rules.impl.RestrictedSymbolRule;
+import com.bigcorp.common.rules.impl.ShortSaleRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
+import com.bigcorp.common.rules.impl.DailyVolumeLimitRule;
+import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
+import com.bigcorp.common.rules.impl.KYCStatusRule;
+import com.bigcorp.common.rules.impl.VolumeDiscountRule;
+import com.bigcorp.common.rules.impl.LoyaltyBonusRule;
+import com.bigcorp.common.rules.impl.MarketHaltRule;
+import com.bigcorp.common.rules.impl.ClientKillSwitchRule;
+import com.bigcorp.common.rules.RuleAuditLogger;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.audit.consumer.AuditListener;
@@ -33,6 +47,11 @@ import com.bigcorp.common.dto.OrderTransferObject;
 import com.bigcorp.common.dto.SettlementTransferObject;
 import com.bigcorp.common.dto.TransferObjectAssembler;
 import com.bigcorp.settlement.reconciliation.ReconciliationProcessor;
+import com.bigcorp.derivatives.core.DerivativeOrder;
+import com.bigcorp.derivatives.core.DerivativeProcessor;
+import com.bigcorp.derivatives.core.FxPricingHelper;
+import com.bigcorp.derivatives.queue.DerivativeQueueConstants;
+import com.bigcorp.derivatives.util.DerivativeLogger;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 
@@ -118,6 +137,27 @@ public class EndToEndTest {
             // Phase 9: Enterprise Patterns (J2EE circa 2001)
             phase9_enterprisePatterns();
 
+            // Phase 10: Config-Driven Rule Loading
+            phase10_ruleConfig();
+
+            // Phase 11: Per-Symbol Trading Restrictions
+            phase11_tradingRestrictions();
+
+            // Phase 12: Derivatives Engine (contractor module)
+            phase12_derivativesEngine();
+
+            // Phase 13: Compliance Rules (post-2005 regulatory incident)
+            phase13_complianceRules();
+
+            // Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+            phase14_wave5Cleanup();
+
+            // Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+            phase15_wave6VolumeAndLoyalty();
+
+            // Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+            phase16_wave7AuditAndCircuitBreakers();
+
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
             e.printStackTrace();
@@ -153,7 +193,7 @@ public class EndToEndTest {
             Statement stmt = conn.createStatement();
             String[] tables = {"CLIENTS", "TRADE_ORDERS", "NOTIFICATIONS", 
                                "SETTLEMENT_RECORDS", "AUDIT_LOG", "PRICING_CACHE",
-                               "BILLING_LEDGER"};
+                               "BILLING_LEDGER", "DAILY_VOLUME_TRACKER"};
             boolean allExist = true;
             for (int i = 0; i < tables.length; i++) {
                 try {
@@ -167,7 +207,7 @@ public class EndToEndTest {
             }
             ConnectionHelper.closeQuietly(stmt);
             ConnectionHelper.closeQuietly(conn);
-            assertTest("T1.2", "All 7 tables exist", allExist);
+            assertTest("T1.2", "All 8 tables exist", allExist);
         } catch (Exception e) {
             assertTest("T1.2", "All 6 tables exist", false, e.getMessage());
         }
@@ -188,8 +228,8 @@ public class EndToEndTest {
 
             ConnectionHelper.closeQuietly(stmt);
             ConnectionHelper.closeQuietly(conn);
-            assertTest("T1.3", "Sample data loaded (5 clients, 7 pricing records)", 
-                clientCount == 5 && pricingCount == 7,
+            assertTest("T1.3", "Sample data loaded (7 clients, 7 pricing records)", 
+                clientCount == 7 && pricingCount == 7,
                 "clients=" + clientCount + ", pricing=" + pricingCount);
         } catch (Exception e) {
             assertTest("T1.3", "Sample data loaded", false, e.getMessage());
@@ -1224,6 +1264,1062 @@ public class EndToEndTest {
     }
 
     // ========================================================================
+    // Phase 10: Config-Driven Rule Loading
+    // ========================================================================
+
+    private static void phase10_ruleConfig() {
+        System.out.println("=== Phase 10: Config-Driven Rule Loading ===");
+        System.out.println();
+
+        // T10.1 - RuleConfigLoader can parse the config file
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            assertTest("T10.1", "RuleConfigLoader parses rules.xml from classpath",
+                rules != null && !rules.isEmpty(),
+                "rulesLoaded=" + (rules != null ? String.valueOf(rules.size()) : "0"));
+        } catch (Exception e) {
+            assertTest("T10.1", "RuleConfigLoader parse", false, e.getMessage());
+        }
+
+        // T10.2 - Loaded rules include the original 4 core types (plus later additions)
+        // Updated: Wave 2 added RestrictedSymbol, Wave 4 added compliance rules,
+        // Wave 5 added none, Wave 6 added VolumeDiscount+LoyaltyBonus,
+        // Wave 7 added MarketHalt+ClientKillSwitch (now 12 total)
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            boolean correctCount = (rules.size() == 12);
+
+            boolean hasMaxOrder = false;
+            boolean hasClientTier = false;
+            boolean hasMarketHours = false;
+            boolean hasSpecialClients = false;
+            boolean hasRestricted = false;
+
+            for (int i = 0; i < rules.size(); i++) {
+                Rule rule = (Rule) rules.get(i);
+                if (rule instanceof MaxOrderValueRule) hasMaxOrder = true;
+                if (rule instanceof ClientTierRule) hasClientTier = true;
+                if (rule instanceof MarketHoursRule) hasMarketHours = true;
+                if (rule instanceof SpecialClientsRule) hasSpecialClients = true;
+                if (rule instanceof RestrictedSymbolRule) hasRestricted = true;
+            }
+
+            boolean corePresent = hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients && hasRestricted;
+            assertTest("T10.2", "Config loads 12 rules including core 4 + all wave additions",
+                correctCount && corePresent,
+                "count=" + rules.size() + ", maxOrder=" + hasMaxOrder
+                + ", clientTier=" + hasClientTier + ", marketHours=" + hasMarketHours
+                + ", specialClients=" + hasSpecialClients + ", restricted=" + hasRestricted);
+        } catch (Exception e) {
+            assertTest("T10.2", "Rule type verification", false, e.getMessage());
+        }
+
+        // T10.3 - Loaded rules have correct priorities
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            int[] expectedPriorities = {100, 90, 80, 50};
+            String[] expectedNames = {"MaxOrderValue", "ClientTier", "MarketHours", "SpecialClients"};
+            boolean allFound = true;
+
+            for (int j = 0; j < expectedNames.length; j++) {
+                boolean found = false;
+                for (int i = 0; i < rules.size(); i++) {
+                    Rule rule = (Rule) rules.get(i);
+                    if (rule.getName().equals(expectedNames[j])
+                        && rule.getPriority() == expectedPriorities[j]) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    allFound = false;
+                }
+            }
+
+            assertTest("T10.3", "Config-loaded rules have correct priorities (100, 90, 80, 50)",
+                allFound);
+        } catch (Exception e) {
+            assertTest("T10.3", "Rule priorities", false, e.getMessage());
+        }
+
+        // T10.4 - Rule engine still works correctly with config-loaded rules
+        // Fixed: set clientId and symbol on order so compliance rules (WashTrade, KYC) don't reject
+        try {
+            // Use a fresh engine with config-loaded rules to avoid singleton state issues
+            RuleEngine.reset();
+            RuleEngine testEngine = RuleEngine.getInstance();
+            List configRules = RuleConfigLoader.loadRules();
+            for (int i = 0; i < configRules.size(); i++) {
+                testEngine.addRule((Rule) configRules.get(i));
+            }
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("CONFIG-TEST-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            boolean result = testEngine.evaluate(ctx);
+
+            assertTest("T10.4", "Rule engine evaluates correctly with config-loaded rules",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T10.4", "Config-loaded rule evaluation", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 11: Per-Symbol Trading Restrictions
+    // ========================================================================
+
+    private static void phase11_tradingRestrictions() {
+        System.out.println("=== Phase 11: Per-Symbol Trading Restrictions ===");
+        System.out.println();
+
+        // T11.1 - RestrictedSymbolRule rejects a restricted symbol
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("RESTRICT-001");
+            order.setSymbol("ENRN");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(10.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            RestrictedSymbolRule rule = new RestrictedSymbolRule();
+            boolean result = rule.evaluate(ctx);
+            assertTest("T11.1", "RestrictedSymbolRule rejects ENRN",
+                !result && ctx.isRejected(),
+                "rejected=" + ctx.isRejected() + ", reason=" + ctx.getRejectionReason());
+        } catch (Exception e) {
+            assertTest("T11.1", "RestrictedSymbolRule rejection", false, e.getMessage());
+        }
+
+        // T11.2 - ShortSaleRule passes for a small SELL
+        try {
+            Client client = new Client();
+            client.setClientId("C003");
+            client.setTier(Client.TIER_SILVER);
+            client.setMaxOrderValue(250000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("SHORT-001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_SELL);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ShortSaleRule rule = new ShortSaleRule();
+            boolean result = rule.evaluate(ctx);
+            assertTest("T11.2", "ShortSaleRule passes for 100-share SELL",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T11.2", "ShortSaleRule small sell", false, e.getMessage());
+        }
+
+        // T11.3 - restricted_check attribute set on a passing order
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("RESTRICT-002");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            RestrictedSymbolRule rule = new RestrictedSymbolRule();
+            rule.evaluate(ctx);
+
+            Object restrictedCheck = ctx.getAttribute("restricted_check");
+            assertTest("T11.3", "restricted_check attribute set to 'passed' on non-restricted symbol",
+                "passed".equals(restrictedCheck),
+                "restricted_check=" + restrictedCheck);
+        } catch (Exception e) {
+            assertTest("T11.3", "restricted_check attribute", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 12: Derivatives Engine
+    // ========================================================================
+
+    private static void phase12_derivativesEngine() {
+        System.out.println("=== Phase 12: Derivatives Engine (FX/Options) ===");
+        System.out.println();
+
+        // T12.1 - DerivativeOrder field round-trip via XML
+        try {
+            DerivativeOrder orig = new DerivativeOrder();
+            orig.setOrderId("DRV-001");
+            orig.setClientId("C001");
+            orig.setContractType(DerivativeOrder.TYPE_FX_SPOT);
+            orig.setUnderlying("EUR/USD");
+            orig.setStrikePrice(1.10);
+            orig.setQuantity(50000);
+            orig.setExpiry("2004-09-15");
+            orig.setStatus(DerivativeOrder.STATUS_NEW);
+            orig.setPremium(0.0);
+
+            String xml = orig.toXml();
+            DerivativeOrder parsed = DerivativeOrder.fromXml(xml);
+
+            boolean fieldsMatch = "DRV-001".equals(parsed.getOrderId())
+                    && "C001".equals(parsed.getClientId())
+                    && DerivativeOrder.TYPE_FX_SPOT.equals(parsed.getContractType())
+                    && "EUR/USD".equals(parsed.getUnderlying())
+                    && parsed.getStrikePrice() == 1.10
+                    && parsed.getQuantity() == 50000
+                    && "2004-09-15".equals(parsed.getExpiry())
+                    && DerivativeOrder.STATUS_NEW.equals(parsed.getStatus());
+
+            assertTest("T12.1", "[DERIV] DerivativeOrder XML round-trip preserves all fields",
+                fieldsMatch,
+                "orderId=" + parsed.getOrderId() + " type=" + parsed.getContractType()
+                    + " underlying=" + parsed.getUnderlying());
+        } catch (Exception e) {
+            assertTest("T12.1", "[DERIV] DerivativeOrder XML round-trip", false, e.getMessage());
+        }
+
+        // T12.2 - DerivativeProcessor processes a simple FX_SPOT order
+        try {
+            DerivativeProcessor proc = new DerivativeProcessor();
+
+            DerivativeOrder order = new DerivativeOrder();
+            order.setOrderId("DRV-002");
+            order.setClientId("C001");
+            order.setContractType(DerivativeOrder.TYPE_FX_SPOT);
+            order.setUnderlying("EUR/USD");
+            order.setStrikePrice(1.10);
+            order.setQuantity(10000);
+            order.setExpiry("2004-09-15");
+
+            DerivativeOrder result = proc.processOrder(order);
+
+            boolean filled = result != null
+                    && DerivativeOrder.STATUS_FILLED.equals(result.getStatus())
+                    && result.getPremium() > 0;
+
+            // expected premium: 10000 * 1.10 * 0.015 = 165.0
+            double expectedPremium = 10000 * 1.10 * 0.015;
+            boolean premiumCorrect = result != null
+                    && Math.abs(result.getPremium() - expectedPremium) < 0.01;
+
+            assertTest("T12.2", "[DERIV] FX_SPOT order processed -> FILLED, premium=" + expectedPremium,
+                filled && premiumCorrect,
+                result != null ? "status=" + result.getStatus() + " premium=" + result.getPremium() : "null result");
+        } catch (Exception e) {
+            assertTest("T12.2", "[DERIV] FX_SPOT order processing", false, e.getMessage());
+        }
+
+        // T12.3 - FxPricingHelper returns expected rates
+        try {
+            double eurRate = FxPricingHelper.getRate("EUR/USD");
+            double gbpRate = FxPricingHelper.getRate("GBP/USD");
+            double jpyRate = FxPricingHelper.getRate("JPY/USD");
+            double unknownRate = FxPricingHelper.getRate("XYZ/USD");
+
+            boolean ratesOk = eurRate == 1.10
+                    && gbpRate == 1.55
+                    && jpyRate == 0.009
+                    && unknownRate == -1.0;
+
+            assertTest("T12.3", "[DERIV] FxPricingHelper rates: EUR=1.10 GBP=1.55 JPY=0.009 unknown=-1",
+                ratesOk,
+                "EUR=" + eurRate + " GBP=" + gbpRate + " JPY=" + jpyRate + " XYZ=" + unknownRate);
+        } catch (Exception e) {
+            assertTest("T12.3", "[DERIV] FxPricingHelper rates", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 13: Compliance Rules (post-2005 regulatory incident)
+    // ========================================================================
+
+    private static void phase13_complianceRules() {
+        System.out.println("=== Phase 13: Compliance Rules (REG-2005) ===");
+        System.out.println();
+
+        // T13.1 - DailyVolumeLimitRule passes for normal-sized order (< 50,000 shares)
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(1000);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            DailyVolumeLimitRule rule = new DailyVolumeLimitRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.1", "DailyVolumeLimitRule passes for 1000 shares (< 50,000 limit)",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T13.1", "DailyVolumeLimitRule normal order", false, e.getMessage());
+        }
+
+        // T13.2 - DailyVolumeLimitRule rejects oversized order (> 50,000 shares)
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-002");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(60000);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            DailyVolumeLimitRule rule = new DailyVolumeLimitRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.2", "DailyVolumeLimitRule rejects 60,000 shares (> 50,000 limit)",
+                !result && ctx.isRejected()
+                    && ctx.getRejectionReason() != null
+                    && ctx.getRejectionReason().contains("REG-2005-001"),
+                "passed=" + result + " reason=" + ctx.getRejectionReason());
+        } catch (Exception e) {
+            assertTest("T13.2", "DailyVolumeLimitRule oversized order", false, e.getMessage());
+        }
+
+        // T13.3 - KYCStatusRule passes for approved client
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-003");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            KYCStatusRule rule = new KYCStatusRule();
+            boolean result = rule.evaluate(ctx);
+
+            // Client C001 should have KYC_STATUS='APPROVED' (default)
+            Object kycStatus = ctx.getAttribute("kyc_status");
+            assertTest("T13.3", "KYCStatusRule passes for client C001 (KYC_STATUS=APPROVED)",
+                result && !ctx.isRejected(),
+                "passed=" + result + " kyc_status=" + kycStatus);
+        } catch (Exception e) {
+            assertTest("T13.3", "KYCStatusRule approved client", false, e.getMessage());
+        }
+
+        // T13.4 - WashTradeDetectionRule passes when no wash trade pattern exists
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-004");
+            order.setClientId("C001");
+            order.setSymbol("INTC");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(30.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            WashTradeDetectionRule rule = new WashTradeDetectionRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.4", "WashTradeDetectionRule passes (no opposite-side order for C001/INTC)",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T13.4", "WashTradeDetectionRule no wash trade", false, e.getMessage());
+        }
+
+        // T13.5 - Verify compliance context attributes are set
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-005");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(500);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Run all three compliance rules in order
+            DailyVolumeLimitRule volumeRule = new DailyVolumeLimitRule();
+            volumeRule.evaluate(ctx);
+
+            WashTradeDetectionRule washRule = new WashTradeDetectionRule();
+            washRule.evaluate(ctx);
+
+            KYCStatusRule kycRule = new KYCStatusRule();
+            kycRule.evaluate(ctx);
+
+            // Check all compliance context attributes
+            Object dailyVolumeChecked = ctx.getAttribute("daily_volume_checked");
+            Object complianceFlags = ctx.getAttribute("compliance_flags");
+            Object washTradeChecked = ctx.getAttribute("wash_trade_checked");
+            Object kycStatus = ctx.getAttribute("kyc_status");
+
+            boolean allSet = Boolean.TRUE.equals(dailyVolumeChecked)
+                && "VOLUME_CHECKED".equals(complianceFlags)
+                && Boolean.TRUE.equals(washTradeChecked)
+                && kycStatus != null;
+
+            assertTest("T13.5", "Compliance context attributes set (daily_volume_checked, compliance_flags, wash_trade_checked, kyc_status)",
+                allSet,
+                "daily_volume_checked=" + dailyVolumeChecked
+                    + " compliance_flags=" + complianceFlags
+                    + " wash_trade_checked=" + washTradeChecked
+                    + " kyc_status=" + kycStatus);
+        } catch (Exception e) {
+            assertTest("T13.5", "Compliance context attributes", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+    // ========================================================================
+
+    private static void phase14_wave5Cleanup() {
+        System.out.println("=== Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup ===");
+        System.out.println();
+
+        // T14.1 - RuleResult round-trip (create, check fields)
+        try {
+            RuleResult result = new RuleResult(true, "TestRule", "Test passed successfully");
+            result.setAttribute("test_key", "test_value");
+            result.setAttribute("numeric_key", Double.valueOf(42.0));
+
+            boolean fieldsCorrect = result.isPassed()
+                && "TestRule".equals(result.getRuleName())
+                && "Test passed successfully".equals(result.getMessage())
+                && "test_value".equals(result.getAttribute("test_key"))
+                && Double.valueOf(42.0).equals(result.getAttribute("numeric_key"));
+
+            assertTest("T14.1", "RuleResult round-trip: fields and attributes preserved",
+                fieldsCorrect,
+                "passed=" + result.isPassed() + " ruleName=" + result.getRuleName()
+                    + " attrs=" + result.getAttributes().size());
+        } catch (Exception e) {
+            assertTest("T14.1", "RuleResult round-trip", false, e.getMessage());
+        }
+
+        // T14.2 - TypedRule interface works when implemented by a test rule
+        try {
+            // Create an inline TypedRule implementation for testing
+            TypedRule testTypedRule = new TypedRule() {
+                public String getName() { return "TestTypedRule"; }
+                public int getPriority() { return 50; }
+                public boolean isActive() { return true; }
+                public boolean evaluate(RuleContext context) {
+                    RuleResult r = evaluateTyped(context);
+                    return r.isPassed();
+                }
+                public void execute(RuleContext context) {
+                    context.setAttribute("typed_rule_executed", Boolean.TRUE);
+                }
+                public RuleResult evaluateTyped(RuleContext context) {
+                    RuleResult r = new RuleResult(true, "TestTypedRule", "Typed evaluation passed");
+                    r.setAttribute("typed_attr", "typed_value");
+                    return r;
+                }
+            };
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Test via the RuleEngine
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+            engine.addRule(testTypedRule);
+            boolean engineResult = engine.evaluate(ctx);
+
+            // Verify TypedRule path was taken (attributes applied to context)
+            Object typedAttr = ctx.getAttribute("typed_attr");
+            Object executedAttr = ctx.getAttribute("typed_rule_executed");
+
+            assertTest("T14.2", "TypedRule interface: evaluateTyped() called by engine, attributes applied",
+                engineResult && "typed_value".equals(typedAttr) && Boolean.TRUE.equals(executedAttr),
+                "engineResult=" + engineResult + " typed_attr=" + typedAttr + " executed=" + executedAttr);
+
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T14.2", "TypedRule interface", false, e.getMessage());
+        }
+
+        // T14.3 - Priority flag defaults to old behavior (descending = high runs first)
+        try {
+            // Ensure the flag is NOT set (default)
+            System.clearProperty("bigcorp.rules.priority.fixed");
+
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+
+            // Create two simple rules with different priorities
+            Rule lowPriority = new SimpleTestRule("LowPri", 10);
+            Rule highPriority = new SimpleTestRule("HighPri", 100);
+
+            engine.addRule(lowPriority);
+            engine.addRule(highPriority);
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-002");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            engine.evaluate(ctx);
+
+            // In descending (legacy) mode, HighPri(100) runs first
+            List messages = ctx.getMessages();
+            String firstPass = messages.size() > 0 ? (String) messages.get(0) : "";
+            boolean highRunsFirst = firstPass.contains("HighPri");
+
+            assertTest("T14.3", "Priority flag default: descending (high number runs first)",
+                highRunsFirst,
+                "first_message=" + firstPass);
+
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T14.3", "Priority flag default behavior", false, e.getMessage());
+        }
+
+        // T14.4 - Setting bigcorp.rules.priority.fixed=true changes ordering
+        try {
+            System.setProperty("bigcorp.rules.priority.fixed", "true");
+
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+
+            Rule lowPriority = new SimpleTestRule("LowPri", 10);
+            Rule highPriority = new SimpleTestRule("HighPri", 100);
+
+            engine.addRule(lowPriority);
+            engine.addRule(highPriority);
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            engine.evaluate(ctx);
+
+            // In ascending (fixed) mode, LowPri(10) runs first
+            List messages = ctx.getMessages();
+            String firstPass = messages.size() > 0 ? (String) messages.get(0) : "";
+            boolean lowRunsFirst = firstPass.contains("LowPri");
+
+            assertTest("T14.4", "Priority flag fixed=true: ascending (low number runs first)",
+                lowRunsFirst,
+                "first_message=" + firstPass);
+
+            // Clean up the system property
+            System.clearProperty("bigcorp.rules.priority.fixed");
+            RuleEngine.reset();
+        } catch (Exception e) {
+            System.clearProperty("bigcorp.rules.priority.fixed");
+            RuleEngine.reset();
+            assertTest("T14.4", "Priority flag fixed=true", false, e.getMessage());
+        }
+
+        // T14.5 - ShortSaleRule uses CommissionCalculator (no hardcoded constant)
+        try {
+            Client goldClient = new Client();
+            goldClient.setClientId("C001");
+            goldClient.setTier(Client.TIER_GOLD);
+            goldClient.setMaxOrderValue(500000);
+            goldClient.setActive(true);
+
+            TradeOrder sellOrder = new TradeOrder();
+            sellOrder.setOrderId("WAVE5-004");
+            sellOrder.setClientId("C001");
+            sellOrder.setSymbol("MSFT");
+            sellOrder.setQuantity(500);
+            sellOrder.setSide(TradeOrder.SIDE_SELL);
+            sellOrder.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(sellOrder, goldClient);
+            ShortSaleRule shortRule = new ShortSaleRule();
+            shortRule.evaluate(ctx);
+
+            Object stashedCommission = ctx.getAttribute("short_sale_commission");
+            // CommissionCalculator.getRate("GOLD") = 0.010
+            // Expected: 500 * 0.010 = 5.0
+            double expectedCommission = 500 * CommissionCalculator.getRate(Client.TIER_GOLD);
+
+            assertTest("T14.5", "ShortSaleRule uses CommissionCalculator (GOLD rate 0.01, 500 shares -> " + expectedCommission + ")",
+                stashedCommission != null
+                    && Math.abs(((Double) stashedCommission).doubleValue() - expectedCommission) < 0.001,
+                "short_sale_commission=" + stashedCommission + " expected=" + expectedCommission);
+        } catch (Exception e) {
+            assertTest("T14.5", "ShortSaleRule commission centralization", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+    // ========================================================================
+
+    private static void phase15_wave6VolumeAndLoyalty() {
+        System.out.println("=== Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl ===");
+        System.out.println();
+
+        // T15.1 - SpecialClientsRule now handles C005 (Pinnacle commission override)
+        try {
+            Client pinnacle = new Client();
+            pinnacle.setClientId("C005");
+            pinnacle.setTier(Client.TIER_BRONZE);
+            pinnacle.setMaxOrderValue(100000);
+            pinnacle.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, pinnacle);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object commOverride = ctx.getAttribute("commission_override");
+            assertTest("T15.1", "SpecialClientsRule: C005 (Pinnacle) gets 50% commission discount (JIRA-3401)",
+                commOverride != null && ((Double) commOverride).doubleValue() == 0.01,
+                "commission_override=" + commOverride);
+        } catch (Exception e) {
+            assertTest("T15.1", "SpecialClients C005 commission override", false, e.getMessage());
+        }
+
+        // T15.2 - VolumeDiscountRule sets volume_discount for large orders
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-002");
+            order.setQuantity(7500);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            VolumeDiscountRule volumeRule = new VolumeDiscountRule();
+            volumeRule.evaluate(ctx);
+            volumeRule.execute(ctx);
+
+            Object volumeDiscount = ctx.getAttribute("volume_discount");
+            Object applied = ctx.getAttribute("volume_discount_applied");
+            assertTest("T15.2", "VolumeDiscountRule: qty=7500 gets 25% volume discount",
+                volumeDiscount != null && ((Double) volumeDiscount).doubleValue() == 0.25
+                    && Boolean.TRUE.equals(applied),
+                "volume_discount=" + volumeDiscount + " applied=" + applied);
+        } catch (Exception e) {
+            assertTest("T15.2", "VolumeDiscountRule volume discount", false, e.getMessage());
+        }
+
+        // T15.3 - LoyaltyBonusRule sets loyalty_bonus for loyal clients
+        try {
+            Client acme = new Client();
+            acme.setClientId("C001");
+            acme.setTier(Client.TIER_GOLD);
+            acme.setMaxOrderValue(500000);
+            acme.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, acme);
+            LoyaltyBonusRule loyaltyRule = new LoyaltyBonusRule();
+            loyaltyRule.evaluate(ctx);
+            loyaltyRule.execute(ctx);
+
+            Object loyaltyBonus = ctx.getAttribute("loyalty_bonus");
+            assertTest("T15.3", "LoyaltyBonusRule: C001 (loyal client) gets 10% loyalty bonus",
+                loyaltyBonus != null && ((Double) loyaltyBonus).doubleValue() == 0.10,
+                "loyalty_bonus=" + loyaltyBonus);
+        } catch (Exception e) {
+            assertTest("T15.3", "LoyaltyBonusRule loyalty bonus", false, e.getMessage());
+        }
+
+        // T15.4 - Priority interaction bug: VolumeDiscount (55) runs BEFORE SpecialClients (50)
+        // in reversed comparator mode, but both set commission-related attributes.
+        // SpecialClients overwrites VolumeDiscount's work (last writer wins).
+        // Known issue: JIRA-6003 — VolumeDiscountRule's discount is overwritten by SpecialClientsRule due to evaluation order
+        try {
+            Client pinnacle = new Client();
+            pinnacle.setClientId("C005");
+            pinnacle.setTier(Client.TIER_BRONZE);
+            pinnacle.setMaxOrderValue(100000);
+            pinnacle.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-004");
+            order.setQuantity(7500);  // triggers volume discount
+            order.setRequestedPrice(10.00);
+
+            RuleContext ctx = new RuleContext(order, pinnacle);
+
+            // Simulate reversed priority ordering: VolumeDiscount(55) runs first, then SpecialClients(50)
+            VolumeDiscountRule volumeRule = new VolumeDiscountRule();
+            volumeRule.evaluate(ctx);
+            volumeRule.execute(ctx);
+
+            // VolumeDiscount should have set volume_discount
+            Object volumeDiscountAfterVolRule = ctx.getAttribute("volume_discount");
+
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            // SpecialClients sets commission_override for C005, overwriting any
+            // commission the VolumeDiscount rule might have intended
+            Object commOverride = ctx.getAttribute("commission_override");
+            Object volumeDiscountFinal = ctx.getAttribute("volume_discount");
+
+            // The volume_discount is still set but commission_override from SpecialClients
+            // takes precedence — the two don't compose, they overwrite.
+            // This is the emergent bug (JIRA-6003)
+            boolean volumeDiscountWasSet = volumeDiscountAfterVolRule != null
+                && ((Double) volumeDiscountAfterVolRule).doubleValue() == 0.25;
+            boolean commOverrideFromSpecial = commOverride != null
+                && ((Double) commOverride).doubleValue() == 0.01;
+
+            assertTest("T15.4", "Priority interaction bug (JIRA-6003): VolumeDiscount set but SpecialClients overwrites commission",
+                volumeDiscountWasSet && commOverrideFromSpecial,
+                "volume_discount=" + volumeDiscountFinal + " commission_override=" + commOverride
+                    + " (both set independently — no composition)");
+        } catch (Exception e) {
+            assertTest("T15.4", "Priority interaction bug", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ====================================================================
+    // Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+    // ====================================================================
+
+    private static void phase16_wave7AuditAndCircuitBreakers() {
+        System.out.println("=== Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches ===");
+        System.out.println();
+
+        // T16.1 - MarketHaltRule passes when market is not halted (default)
+        try {
+            // Ensure market halt property is not set (default = false)
+            System.clearProperty("bigcorp.market.halted");
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-001");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            MarketHaltRule haltRule = new MarketHaltRule();
+            boolean result = haltRule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("market_halt_checked");
+            assertTest("T16.1", "MarketHaltRule passes when market is not halted (default)",
+                result && Boolean.TRUE.equals(checked),
+                "passed=" + result + " market_halt_checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T16.1", "MarketHaltRule default (not halted)", false, e.getMessage());
+        }
+
+        // T16.2 - MarketHaltRule rejects when bigcorp.market.halted=true
+        try {
+            // Set system property to halt the market
+            System.setProperty("bigcorp.market.halted", "true");
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-002");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            MarketHaltRule haltRule = new MarketHaltRule();
+            boolean result = haltRule.evaluate(ctx);
+
+            boolean rejected = ctx.isRejected();
+            String reason = ctx.getRejectionReason();
+            boolean reasonContainsREG = (reason != null && reason.contains("REG-2011-001"));
+
+            assertTest("T16.2", "MarketHaltRule rejects when market is halted",
+                !result && rejected && reasonContainsREG,
+                "passed=" + result + " rejected=" + rejected + " reason=" + reason);
+        } catch (Exception e) {
+            assertTest("T16.2", "MarketHaltRule halted rejection", false, e.getMessage());
+        } finally {
+            // Always clear the property so it doesn't affect other tests
+            System.clearProperty("bigcorp.market.halted");
+        }
+
+        // T16.3 - ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-003");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ClientKillSwitchRule killRule = new ClientKillSwitchRule();
+            boolean result = killRule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("kill_switch_checked");
+            assertTest("T16.3", "ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')",
+                result && Boolean.TRUE.equals(checked),
+                "passed=" + result + " kill_switch_checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T16.3", "ClientKillSwitchRule normal client", false, e.getMessage());
+        }
+
+        // T16.4 - Verify RULE_AUDIT_LOG is populated after running rules
+        // We run a simple rule through the engine and check the audit log
+        try {
+            // Clear any previous audit log entries for our test order
+            Connection conn = null;
+            Statement stmt = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID LIKE 'WAVE7-%'");
+            } finally {
+                ConnectionHelper.closeQuietly(stmt);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            // Log a rule decision manually and verify it was written
+            RuleAuditLogger.logRuleDecision("TestRule", "WAVE7-AUDIT", "C001", true, "Test audit entry");
+
+            int auditCount = 0;
+            conn = null;
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-AUDIT'"
+                );
+                rs = ps.executeQuery();
+                if (rs.next()) {
+                    auditCount = rs.getInt(1);
+                }
+            } finally {
+                ConnectionHelper.closeQuietly(rs);
+                ConnectionHelper.closeQuietly(ps);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            assertTest("T16.4", "RULE_AUDIT_LOG populated after rule decision logging",
+                auditCount > 0,
+                "audit_count=" + auditCount);
+        } catch (Exception e) {
+            assertTest("T16.4", "RULE_AUDIT_LOG populated", false, e.getMessage());
+        }
+
+        // T16.5 - Verify audit trail contains entries for each rule evaluated
+        // Run a mini rule engine evaluation and check that each rule produced an audit entry
+        try {
+            // Clean up first
+            Connection conn = null;
+            Statement stmt = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-FULL'");
+            } finally {
+                ConnectionHelper.closeQuietly(stmt);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            // Create a fresh rule engine with just MarketHaltRule
+            RuleEngine miniEngine = RuleEngine.getInstance();
+            // Reset to get a clean engine
+            RuleEngine.reset();
+            miniEngine = RuleEngine.getInstance();
+
+            miniEngine.addRule(new MarketHaltRule());
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-FULL");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Ensure market is not halted for this test
+            System.clearProperty("bigcorp.market.halted");
+            miniEngine.evaluate(ctx);
+
+            // Reset engine so other tests aren't affected
+            RuleEngine.reset();
+
+            // Check RULE_AUDIT_LOG for entries
+            int auditEntries = 0;
+            conn = null;
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-FULL'"
+                );
+                rs = ps.executeQuery();
+                if (rs.next()) {
+                    auditEntries = rs.getInt(1);
+                }
+            } finally {
+                ConnectionHelper.closeQuietly(rs);
+                ConnectionHelper.closeQuietly(ps);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            assertTest("T16.5", "Audit trail contains entries for each rule evaluated via RuleEngine",
+                auditEntries >= 1,
+                "audit_entries=" + auditEntries + " (expected >= 1 for MarketHaltRule)");
+        } catch (Exception e) {
+            assertTest("T16.5", "Audit trail entries per rule", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    /**
+     * Simple test rule used by Phase 14 priority ordering tests.
+     * Always passes, records its name in context messages via execute().
+     */
+    private static class SimpleTestRule implements Rule {
+        private String name;
+        private int priority;
+
+        SimpleTestRule(String name, int priority) {
+            this.name = name;
+            this.priority = priority;
+        }
+
+        public String getName() { return name; }
+        public int getPriority() { return priority; }
+        public boolean isActive() { return true; }
+        public boolean evaluate(RuleContext context) { return true; }
+        public void execute(RuleContext context) { /* no-op */ }
+    }
+
+    // ========================================================================
     // Helpers
     // ========================================================================
 
@@ -1241,6 +2337,7 @@ public class EndToEndTest {
             stmt = conn.createStatement();
             // Order matters: child tables first (FK constraints)
             stmt.executeUpdate("DELETE FROM BILLING_LEDGER WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
+            stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%' OR ORDER_ID LIKE 'WAVE7-%'");
             stmt.executeUpdate("DELETE FROM AUDIT_LOG WHERE ENTITY_ID LIKE 'ORD-TEST-%' OR ENTITY_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM SETTLEMENT_RECORDS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM NOTIFICATIONS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");

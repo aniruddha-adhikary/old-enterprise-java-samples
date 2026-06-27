@@ -237,6 +237,195 @@ ant run-demo
 
 ---
 
+## Phase 10: Config-Driven Rule Loading
+
+### T10.1 — RuleConfigLoader parses rules.xml from classpath
+**Action:** Call RuleConfigLoader.loadRules()
+**Verify:** Returns non-empty list of Rule objects
+
+### T10.2 — Config loads exactly 4 expected rule types
+**Action:** Call RuleConfigLoader.loadRules() and check types
+**Verify:**
+- List contains exactly 4 rules
+- MaxOrderValueRule, ClientTierRule, MarketHoursRule, SpecialClientsRule all present
+
+**Known issue / JIRA-4102:** Now fails because Wave 2 added RestrictedSymbolRule to rules.xml (count is now 5). Test assertion needs updating but no time to refactor test infrastructure.
+
+### T10.3 — Config-loaded rules have correct priorities
+**Action:** Call RuleConfigLoader.loadRules() and check priorities
+**Verify:**
+- MaxOrderValue priority = 100
+- ClientTier priority = 90
+- MarketHours priority = 80
+- SpecialClients priority = 50
+
+### T10.4 — Rule engine evaluates correctly with config-loaded rules
+**Action:** Evaluate a valid order through the config-loaded rule engine
+**Verify:** Order passes all rules (same behavior as hardcoded)
+
+---
+
+## Phase 11: Per-Symbol Trading Restrictions
+
+### T11.1 — RestrictedSymbolRule rejects restricted symbol
+**Action:** Create order with symbol "ENRN" and evaluate via RestrictedSymbolRule
+**Verify:** Rule returns false, context is rejected with reason containing "Restricted symbol"
+
+### T11.2 — ShortSaleRule passes for small SELL
+**Action:** Create SELL order with 100 shares and evaluate via ShortSaleRule
+**Verify:** Rule returns true, context is not rejected
+
+### T11.3 — restricted_check attribute set on passing order
+**Action:** Create order with non-restricted symbol (MSFT), evaluate via RestrictedSymbolRule
+**Verify:** `restricted_check` attribute is set to "passed" on the RuleContext
+
+---
+
+## Phase 12: Derivatives Engine (FX/Options — contractor module)
+
+### T12.1 — DerivativeOrder XML round-trip
+**Action:** Create DerivativeOrder with all fields, marshal to XML via toXml(), unmarshal via fromXml()
+**Verify:** All fields preserved (orderId, clientId, contractType, underlying, strikePrice, quantity, expiry, status)
+
+### T12.2 — DerivativeProcessor processes FX_SPOT order
+**Action:** Create FX_SPOT order (EUR/USD, 10000 qty, strike 1.10), call processOrder()
+**Verify:**
+- Status = FILLED
+- Premium = 10000 * 1.10 * 0.015 = 165.0 (FX commission rate)
+
+### T12.3 — FxPricingHelper returns expected rates
+**Action:** Call FxPricingHelper.getRate() for EUR/USD, GBP/USD, JPY/USD, and unknown pair
+**Verify:**
+- EUR/USD = 1.10
+- GBP/USD = 1.55
+- JPY/USD = 0.009
+- Unknown pair returns -1.0
+
+---
+
+## Phase 13: Compliance Rules (post-2005 regulatory incident)
+
+### T13.1 — DailyVolumeLimitRule passes for normal-sized order
+**Action:** Create order with 1,000 shares, evaluate via DailyVolumeLimitRule
+**Verify:** Rule returns true, context is not rejected (< 50,000 share limit)
+
+### T13.2 — DailyVolumeLimitRule rejects oversized order
+**Action:** Create order with 60,000 shares, evaluate via DailyVolumeLimitRule
+**Verify:** Rule returns false, context rejected with reason containing "REG-2005-001"
+
+### T13.3 — KYCStatusRule passes for approved client
+**Action:** Create order for client C001 (KYC_STATUS='APPROVED'), evaluate via KYCStatusRule
+**Verify:** Rule returns true, context attribute `kyc_status` is set
+
+### T13.4 — WashTradeDetectionRule passes when no wash trade pattern exists
+**Action:** Create BUY order for C001/INTC, evaluate via WashTradeDetectionRule
+**Verify:** Rule returns true, no wash trade detected (no recent opposite-side order)
+
+### T13.5 — Compliance context attributes set after all three rules
+**Action:** Run DailyVolumeLimitRule, WashTradeDetectionRule, and KYCStatusRule on a valid order
+**Verify:**
+- `daily_volume_checked` = Boolean.TRUE
+- `compliance_flags` = "VOLUME_CHECKED"
+- `wash_trade_checked` = Boolean.TRUE
+- `kyc_status` is not null
+
+**Known issue / JIRA-5200:** T2.3 (SELL ORCL) intermittently fails with status=NEW due to race condition — compliance rule DB queries (KYCStatus, WashTradeDetection) add latency that exceeds the 5-second wait in submitAndVerify. T4.5 fails as a consequence (order never reached FILLED so can't be SETTLED).
+
+**Known issue / JIRA-5201:** T10.4 now fails because the config-loaded RuleEngine includes compliance rules (KYCStatus, DailyVolumeLimit, WashTradeDetection) which reject the test order — the test creates a TradeOrder without setting clientId on the order object, so WashTradeDetectionRule rejects it with "Client ID is null".
+
+**Known issue / JIRA-4102:** T10.2 fails because it expects 4 rules in config but Wave 2 added RestrictedSymbolRule and Wave 4 added 3 compliance rules (now 8 total).
+
+---
+
+## Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+
+### T14.1 — RuleResult round-trip
+**Action:** Create a RuleResult with passed=true, ruleName, message, and attributes
+**Verify:** All fields are retrievable and match what was set
+
+### T14.2 — TypedRule interface works when implemented by a test rule
+**Action:** Create a TypedRule implementation, register with RuleEngine, evaluate
+**Verify:**
+- Engine calls evaluateTyped() (not legacy evaluate())
+- RuleResult attributes are applied to context via applyToContext()
+- execute() is still called after passing
+
+### T14.3 — Priority flag defaults to old behavior (descending = high runs first)
+**Action:** Clear system property, add rules with priority 10 and 100, evaluate
+**Verify:** Rule with priority 100 runs first (descending order preserved by default)
+
+### T14.4 — Setting bigcorp.rules.priority.fixed=true changes ordering
+**Action:** Set system property bigcorp.rules.priority.fixed=true, add rules with priority 10 and 100
+**Verify:** Rule with priority 10 runs first (ascending = correct behavior)
+
+### T14.5 — ShortSaleRule uses CommissionCalculator (no hardcoded commission)
+**Action:** Create SELL order for GOLD client (500 shares), evaluate via ShortSaleRule
+**Verify:** Stashed short_sale_commission matches CommissionCalculator.getRate("GOLD") * 500 = 5.0 (not 10.0 from old hardcoded 0.02)
+
+---
+
+## Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+
+### T15.1 — SpecialClientsRule handles C005 (Pinnacle commission override)
+**Action:** Create order for C005 (Pinnacle, BRONZE), evaluate via SpecialClientsRule
+**Verify:** commission_override = 0.01 (50% off BRONZE 2% rate — JIRA-3401 finally resolved)
+
+### T15.2 — VolumeDiscountRule sets volume_discount for large orders
+**Action:** Create order with qty=7500, evaluate via VolumeDiscountRule
+**Verify:**
+- volume_discount = 0.25 (25% off for qty > 5000)
+- volume_discount_applied = Boolean.TRUE
+
+### T15.3 — LoyaltyBonusRule sets loyalty_bonus for loyal clients
+**Action:** Create order for C001 (loyal client since 1999), evaluate via LoyaltyBonusRule
+**Verify:** loyalty_bonus = 0.10 (10% additional discount)
+
+### T15.4 — Priority interaction bug (JIRA-6003)
+**Action:** Simulate reversed priority ordering — VolumeDiscount(55) runs before SpecialClients(50). Both set commission-related attributes for C005.
+**Verify:**
+- VolumeDiscountRule sets volume_discount = 0.25
+- SpecialClientsRule sets commission_override = 0.01
+- Both attributes coexist but don't compose — no rule combines them
+- Known issue: JIRA-6003 — VolumeDiscountRule's discount is overwritten by SpecialClientsRule due to evaluation order. The volume_discount attribute is set but ignored because commission_override takes precedence downstream.
+
+**Known issue / JIRA-6003:** VolumeDiscountRule and SpecialClientsRule overlap on commission attributes due to priority ordering. VolumeDiscount (priority 55) runs BEFORE SpecialClients (priority 50) in reversed comparator mode, but SpecialClients overwrites the commission_override. The two rules don't compose their discounts.
+
+**Known issue / JIRA-4102:** T10.2 count now 10 (was 8, was 5, was 4) — VolumeDiscountRule and LoyaltyBonusRule added to config.
+
+---
+
+## Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+
+### T16.1 — MarketHaltRule passes when market is not halted (default)
+**Action:** Clear system property `bigcorp.market.halted`, create order for C001, evaluate via MarketHaltRule
+**Verify:**
+- Rule returns true (passes)
+- Context attribute `market_halt_checked` = Boolean.TRUE
+
+### T16.2 — MarketHaltRule rejects when bigcorp.market.halted=true
+**Action:** Set system property `bigcorp.market.halted=true`, create order, evaluate via MarketHaltRule, then clear property
+**Verify:**
+- Rule returns false (rejects)
+- Context is rejected with reason containing "REG-2011-001"
+
+### T16.3 — ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')
+**Action:** Create order for C001 (KILL_SWITCH='N' by default), evaluate via ClientKillSwitchRule
+**Verify:**
+- Rule returns true (passes)
+- Context attribute `kill_switch_checked` = Boolean.TRUE
+
+### T16.4 — Verify RULE_AUDIT_LOG is populated after rule decision logging
+**Action:** Log a rule decision via RuleAuditLogger.logRuleDecision(), query RULE_AUDIT_LOG
+**Verify:** At least 1 row in RULE_AUDIT_LOG for the test order
+
+### T16.5 — Verify audit trail contains entries for each rule evaluated
+**Action:** Create mini RuleEngine with MarketHaltRule, evaluate an order, query RULE_AUDIT_LOG
+**Verify:** At least 1 audit entry exists for the evaluated order (1 per rule in engine)
+
+**Known issue / JIRA-4102:** T10.2 count now 12 (was 10, was 8, was 5, was 4) — MarketHaltRule and ClientKillSwitchRule added to config.
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

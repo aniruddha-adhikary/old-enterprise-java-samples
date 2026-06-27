@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BigCorp Rule Engine Configuration (Real Infrastructure)
+  
+  Defines the business rules evaluated by the order engine.
+  Rules are instantiated via reflection and registered with the
+  RuleEngine singleton. Priority values determine execution order
+  (note: RuleEngine sorts DESCENDING, so higher number = runs first).
+
+  The "active" attribute is read from XML but NOT applied to the
+  Rule object — each Rule returns its own isActive() value.
+  This is a known bug (see RuleEngine javadoc).
+
+  Author: architect
+  Since: 2003 Q1
+-->
+<rules>
+  <!-- Circuit breaker and kill switch rules - added after 2011 flash crash (REG-2011-001/002) -->
+  <rule class="com.bigcorp.common.rules.impl.MarketHaltRule" priority="120" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.ClientKillSwitchRule" priority="118" active="true"/>
+  <!-- Compliance rules - added after 2005 regulatory incident -->
+  <rule class="com.bigcorp.common.rules.impl.KYCStatusRule" priority="115" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.DailyVolumeLimitRule" priority="110" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.WashTradeDetectionRule" priority="105" active="true"/>
+  <!-- Original business rules -->
+  <rule class="com.bigcorp.common.rules.impl.MaxOrderValueRule" priority="100" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.RestrictedSymbolRule" priority="95" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.ClientTierRule" priority="90" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.MarketHoursRule" priority="80" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.VolumeDiscountRule" priority="55" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.SpecialClientsRule" priority="50" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.LoyaltyBonusRule" priority="45" active="true"/>
+</rules>

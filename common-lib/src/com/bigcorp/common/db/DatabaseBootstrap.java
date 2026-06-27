@@ -70,6 +70,7 @@ public class DatabaseBootstrap {
             stmt = conn.createStatement();
 
             // CLIENTS table
+            // KYC_STATUS column added post-2005 regulatory review
             stmt.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS CLIENTS (" +
                 "  CLIENT_ID VARCHAR(20) PRIMARY KEY," +
@@ -79,9 +80,31 @@ public class DatabaseBootstrap {
                 "  TIER VARCHAR(10) DEFAULT 'BRONZE'," +
                 "  MAX_ORDER_VALUE DECIMAL(15,2) DEFAULT 100000.00," +
                 "  ACTIVE INTEGER DEFAULT 1," +
+                "  KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'," +
+                "  KILL_SWITCH VARCHAR(1) DEFAULT 'N'," +
                 "  CREATED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                 ")"
             );
+
+            // Add KYC_STATUS column if table already exists without it
+            // (migration safety for existing databases)
+            try {
+                stmt.executeUpdate(
+                    "ALTER TABLE CLIENTS ADD COLUMN KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'"
+                );
+            } catch (Exception alreadyExists) {
+                // column already exists, ignore
+            }
+
+            // Add KILL_SWITCH column if table already exists without it
+            // Per-client kill switch for rapid risk response (REG-2011-002)
+            try {
+                stmt.executeUpdate(
+                    "ALTER TABLE CLIENTS ADD COLUMN KILL_SWITCH VARCHAR(1) DEFAULT 'N'"
+                );
+            } catch (Exception alreadyExists) {
+                // column already exists, ignore
+            }
 
             // TRADE_ORDERS table
             stmt.executeUpdate(
@@ -165,6 +188,30 @@ public class DatabaseBootstrap {
                 ")"
             );
 
+            // RULE_AUDIT_LOG - Every rule decision logged for regulatory compliance (REG-2011-003)
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS RULE_AUDIT_LOG (" +
+                "  AUDIT_ID INTEGER IDENTITY PRIMARY KEY," +
+                "  RULE_NAME VARCHAR(50) NOT NULL," +
+                "  ORDER_ID VARCHAR(30)," +
+                "  CLIENT_ID VARCHAR(20)," +
+                "  RESULT VARCHAR(10) NOT NULL," +
+                "  EVALUATION_TIME TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  DETAILS VARCHAR(500)" +
+                ")"
+            );
+
+            // DAILY_VOLUME_TRACKER - Table added for regulatory tracking (REG-2005-001)
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS DAILY_VOLUME_TRACKER (" +
+                "  CLIENT_ID VARCHAR(20) NOT NULL," +
+                "  TRADE_DATE DATE NOT NULL," +
+                "  TOTAL_SHARES INTEGER DEFAULT 0," +
+                "  LAST_UPDATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  PRIMARY KEY (CLIENT_ID, TRADE_DATE)" +
+                ")"
+            );
+
             // PRICING_CACHE - used by pricing service
             stmt.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS PRICING_CACHE (" +
@@ -208,6 +255,8 @@ public class DatabaseBootstrap {
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C003', 'Smith & Associates', 'desk@smithassoc.com', '555-0300', 'SILVER', 250000.00, 1)");
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C004', 'MegaFund Inc', 'ops@megafund.com', '555-0400', 'GOLD', 1000000.00, 1)");
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C005', 'Pinnacle Investments', 'trade@pinnacle.com', '555-0500', 'BRONZE', 100000.00, 1)");
+            stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C006', 'Global Macro Fund', 'globalfund@trading.com', '555-0600', 'PLATINUM', 10000000.00, 1)");
+            stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C007', 'Velocity Trading LLC', 'trades@velocity.com', '555-0700', 'GOLD', 2000000.00, 1)");
 
             // Sample pricing data
             stmt.executeUpdate("INSERT INTO PRICING_CACHE (SYMBOL, BID_PRICE, ASK_PRICE, LAST_PRICE, CURRENCY) VALUES ('MSFT', 25.50, 25.75, 25.63, 'USD')");

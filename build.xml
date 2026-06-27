@@ -126,6 +126,12 @@
                 <include name="**/*.xml"/>
             </fileset>
         </copy>
+        <!-- copy externalized rule configuration to build output -->
+        <copy todir="${build.dir}/common-lib" failonerror="false">
+            <fileset dir="config">
+                <include name="rules.xml"/>
+            </fileset>
+        </copy>
     </target>
 
     <!-- Classpath with common-lib compiled -->
@@ -225,6 +231,22 @@
         </javac>
     </target>
 
+    <!-- Compile derivatives-engine (contractor module — FX/options) -->
+    <target name="compile-derivatives" depends="compile-common"
+            description="Compile derivatives-engine module">
+        <mkdir dir="${build.dir}/derivatives-engine"/>
+        <javac srcdir="${derivatives.dir}/src"
+               destdir="${build.dir}/derivatives-engine"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+            </classpath>
+        </javac>
+    </target>
+
     <!-- Compile demo -->
     <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
             description="Compile demo runner">
@@ -248,7 +270,7 @@
     </target>
 
     <!-- Compile test suite -->
-    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
+    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives"
             description="Compile end-to-end test suite">
         <mkdir dir="${build.dir}/test"/>
         <javac srcdir="test/src"
@@ -265,13 +287,14 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
+                <pathelement location="${build.dir}/derivatives-engine"/>
             </classpath>
         </javac>
     </target>
 
     <!-- Compile all -->
     <target name="compile" 
-            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-demo"
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-demo"
             description="Compile all modules"/>
 
     <!-- Package common-lib as JAR -->
@@ -360,6 +383,7 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
+                <pathelement location="${build.dir}/derivatives-engine"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
@@ -411,6 +435,13 @@
         <delete dir="${build.dir}"/>
         <delete dir="${dist.dir}"/>
     </target>
+
+    <!-- Verification gate for evolution simulation.
+         Runs clean compile + EndToEndTest.
+         Must pass (or failures documented) at the end of every wave.
+         See docs/evolution/SIMULATION.md for the gate procedure. -->
+    <target name="verify" depends="clean,compile-test,run-test"
+            description="Verification gate: clean build + run all tests"/>
 
     <!-- Clean including downloaded libs -->
     <target name="clean-all" depends="clean"
