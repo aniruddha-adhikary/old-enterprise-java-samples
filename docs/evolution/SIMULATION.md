@@ -2,7 +2,7 @@
 
 ## Overview
 
-This simulation models how a legacy trading system's business rules and modules organically grow more complex and messy over ~10-12 years (circa 2000-2012). Each "wave" represents a different era and is implemented by an agent assigned a specific persona (engineer archetype). Some waves make good architectural choices; others accumulate tech debt deliberately.
+This simulation models how a legacy trading system's business rules and modules organically grow more complex and messy over ~22 years (circa 2000-2023). Each "wave" represents a different era and is implemented by an agent assigned a specific persona (engineer archetype). Some waves make good architectural choices; others accumulate tech debt deliberately.
 
 ## Wave Model
 
@@ -29,6 +29,14 @@ Each wave represents a time period (roughly 1-2 years) and is attributed to a pe
 | 5 | 2007 Q1 | architect | Pay down debt — centralize commission, typed RuleResult, fix priority comparator behind feature flag |
 | 6 | 2009 Q2 | feature-rusher | Tiered/volume-based commission and special-client sprawl |
 | 7 | 2011 Q4 | compliance-bolt-on | Audit everything / circuit breakers — market halt, kill switches, audit trail |
+| 8 | 2013 Q2 | contractor | Reporting subsystem — own module, own DAO/logger/config (reporting-service/) |
+| 9 | 2014 Q1 | feature-rusher | Multi-currency FX support, more special-client sprawl (C008-C010) |
+| 10 | 2015 Q1 | compliance-bolt-on | Trade surveillance — layering, spoofing, position limits, surveillance audit log |
+| 11 | 2016 Q1 | architect | Pay down debt — DAO consolidation (BaseDAO, DAOInterface), migration documentation |
+| 12 | 2017 Q1 | contractor | Risk engine module — own model, own VaR calculator, own scheduler (risk-engine/) |
+| 13 | 2019 Q1 | feature-rusher | Client portal API — hardcoded auth, copy-pasted queries, hand-built JSON |
+| 14 | 2021 Q1 | compliance-bolt-on | Regulatory reporting (MiFID/CAT-style) — fixed-width and XML exports, REG_REPORT_LOG |
+| 15 | 2023 Q1 | architect | Logging/observability cleanup — unified BigCorpLogger facade, migration documentation |
 
 ## Verification Gate
 

@@ -394,7 +394,7 @@ ant run-demo
 
 ---
 
-## Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+## Phase 16: Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
 
 ### T16.1 — MarketHaltRule passes when market is not halted (default)
 **Action:** Clear system property `bigcorp.market.halted`, create order for C001, evaluate via MarketHaltRule
@@ -423,6 +423,176 @@ ant run-demo
 **Verify:** At least 1 audit entry exists for the evaluated order (1 per rule in engine)
 
 **Known issue / JIRA-4102:** T10.2 count now 12 (was 10, was 8, was 5, was 4) — MarketHaltRule and ClientKillSwitchRule added to config.
+
+---
+
+## Phase 17: Wave 8 — Reporting Subsystem (contractor)
+
+### T17.1 — ReportingDAO daily P&L query
+**Action:** Instantiate ReportingDAO, call getDailyPnlSummary()
+**Verify:** Returns non-null list (may be empty if no filled orders)
+
+### T17.2 — ReportTemplateEngine HTML generation
+**Action:** Generate HTML report with test data via ReportTemplateEngine.generateHtmlReport()
+**Verify:** HTML contains `<html>`, title, and data values
+
+### T17.3 — ReportTemplateEngine CSV generation
+**Action:** Generate CSV report with test data via ReportTemplateEngine.generateCsvReport()
+**Verify:** CSV contains header row and data row with correct delimiter
+
+### T17.4 — ReportGenerator file output
+**Action:** Call ReportGenerator.generateDailyPnlReport() with test output directory
+**Verify:** daily_pnl.html and daily_pnl.csv files created
+
+**Known issue / JIRA-8100:** generateDailyPnlReport() does not auto-create the output directory; caller must mkdir first.
+
+---
+
+## Phase 18: Wave 9 — Multi-Currency & More Special Clients (feature-rusher)
+
+### T18.1 — MultiCurrencyRule passes for USD order
+**Action:** Create order with currency=USD, evaluate via MultiCurrencyRule
+**Verify:** fx_rate_applied=1.0, settlement_currency=USD
+
+### T18.2 — MultiCurrencyRule sets EUR rate
+**Action:** Create order with currency=EUR, evaluate via MultiCurrencyRule
+**Verify:** fx_rate_applied=1.1, settlement_currency=EUR
+
+### T18.3 — SpecialClientsRule C008 commission override
+**Action:** Create order for C008 (Falcon Trading), evaluate via SpecialClientsRule
+**Verify:** commission_override=0.005 (75% discount)
+
+### T18.4 — Rule count after Wave 9 additions
+**Action:** Load rules via RuleConfigLoader, add ShortSaleRule manually
+**Verify:** Total rule count = 17 (16 config + 1 manual)
+
+**Known issue / JIRA-4102:** T10.2 count now 16 (was 12).
+
+---
+
+## Phase 19: Wave 10 — Trade Surveillance (compliance-bolt-on)
+
+### T19.1 — LayeringDetectionRule passes for normal order count
+**Action:** Create order for C001/INTC with 100 shares, evaluate via LayeringDetectionRule
+**Verify:** Rule returns true, layering_checked=Boolean.TRUE
+
+### T19.2 — SpoofingPatternRule passes for client with no cancellations
+**Action:** Create order for C001/MSFT, evaluate via SpoofingPatternRule
+**Verify:** Rule returns true, spoofing_checked=Boolean.TRUE
+
+### T19.3 — PositionLimitRule passes for order within limits
+**Action:** Create order with 100 shares, evaluate via PositionLimitRule
+**Verify:** Rule returns true, position_limit_checked=Boolean.TRUE
+
+### T19.4 — SURVEILLANCE_AUDIT_LOG table accepts entries
+**Action:** Write entry via SurveillanceAuditLogger, query table
+**Verify:** Entry exists in SURVEILLANCE_AUDIT_LOG
+
+### T19.5 — POSITION_TRACKING table exists
+**Action:** Query POSITION_TRACKING table
+**Verify:** Table is queryable (may be empty)
+
+---
+
+## Phase 20: Wave 11 — DAO Consolidation (architect)
+
+### T20.1 — BaseDAO.queryList works for simple query
+**Action:** Create BaseDAO subclass, call queryList("SELECT CLIENT_ID FROM CLIENTS")
+**Verify:** Returns list with >= 7 client IDs
+
+### T20.2 — BaseDAO.querySingle with parameterized query
+**Action:** Query CLIENTS for CLIENT_ID='C001'
+**Verify:** Returns 'Acme Trading LLC'
+
+### T20.3 — BaseDAO.countRows works
+**Action:** Count active clients (ACTIVE=1)
+**Verify:** Returns >= 7
+
+### T20.4 — DAOInterface contract exists
+**Action:** Verify DAOInterface has findById, findAll, save methods via reflection
+**Verify:** All three methods exist with correct signatures
+
+---
+
+## Phase 21: Wave 12 — Risk Engine (contractor)
+
+### T21.1 — ExposureCalculator computes correct notional and VaR
+**Action:** Create RiskOrder (BUY 1000 MSFT @ $25), call calculateRisk()
+**Verify:** notional=25000, exposure=+25000, VaR>0
+
+### T21.2 — RiskOrder model round-trip
+**Action:** Create RiskOrder (SELL 500 MSFT @ $30), calculate risk
+**Verify:** Fields preserved, SELL gives negative exposure
+
+### T21.3 — RISK_ASSESSMENTS table accepts data
+**Action:** Save risk assessment via RiskDAO
+**Verify:** RISK_ASSESSMENTS table has >= 1 row
+
+### T21.4 — RiskScheduler queue constants defined
+**Action:** Check RiskScheduler.RISK_INBOUND_QUEUE
+**Verify:** Equals "RISK.ORDERS.INBOUND"
+
+---
+
+## Phase 22: Wave 13 — Client Portal API (feature-rusher)
+
+### T22.1 — ClientPortalAPI authentication
+**Action:** Test authenticate() with valid key, wrong key, and null
+**Verify:** Valid key passes, wrong key fails, null fails
+
+### T22.2 — ClientPortalAPI.getOrdersForClient
+**Action:** Call getOrdersForClient("C001")
+**Verify:** Returns non-null list
+
+### T22.3 — ClientPortalAPI.getClientBalance
+**Action:** Call getClientBalance("C001")
+**Verify:** Returns non-null map
+
+### T22.4 — ClientPortalAPI.getOrderStatusJson
+**Action:** Call getOrderStatusJson("nonexistent-order")
+**Verify:** Returns "{}"
+
+**Known issue / JIRA-9100:** Authentication is just hardcoded API key comparison; TODO: real auth.
+
+---
+
+## Phase 23: Wave 14 — Regulatory Reporting (compliance-bolt-on)
+
+### T23.1 — RegulatoryExportJob generates fixed-width file
+**Action:** Call generateFixedWidthReport() with test output path
+**Verify:** File created, records >= 0
+
+### T23.2 — Fixed-width file passes validation
+**Action:** Read generated file, call validateFixedWidthFile()
+**Verify:** Returns true (has HDR header and TRL trailer)
+
+### T23.3 — RegulatoryExportJob generates XML report
+**Action:** Call generateXmlReport() with test output path
+**Verify:** File contains <RegulatoryReport>, <Trades>, </RegulatoryReport>
+
+### T23.4 — REG_REPORT_LOG table exists
+**Action:** Query REG_REPORT_LOG table
+**Verify:** Table is queryable (count >= 0)
+
+---
+
+## Phase 24: Wave 15 — Logging/Observability Cleanup (architect)
+
+### T24.1 — BigCorpLogger instantiation and info logging
+**Action:** Create BigCorpLogger from EndToEndTest.class, call info()
+**Verify:** No exception thrown
+
+### T24.2 — BigCorpLogger respects global log level
+**Action:** Set level to ERROR, call debug/info/error, restore
+**Verify:** No exception (debug/info suppressed at ERROR level)
+
+### T24.3 — BigCorpLogger derives module name from package
+**Action:** Create loggers from ConnectionHelper.class and with explicit module name
+**Verify:** Both work without error
+
+### T24.4 — BigCorpLogger log level constants
+**Action:** Check LEVEL_DEBUG, LEVEL_INFO, LEVEL_WARN, LEVEL_ERROR
+**Verify:** DEBUG=0, INFO=1, WARN=2, ERROR=3
 
 ---
 

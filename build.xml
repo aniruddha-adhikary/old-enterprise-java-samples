@@ -247,6 +247,38 @@
         </javac>
     </target>
 
+    <!-- Compile reporting-service (contractor module — reporting subsystem, 2013) -->
+    <target name="compile-reporting" depends="compile-common"
+            description="Compile reporting-service module">
+        <mkdir dir="${build.dir}/reporting-service"/>
+        <javac srcdir="${reporting.dir}/src"
+               destdir="${build.dir}/reporting-service"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <!-- Compile risk-engine (contractor module — risk engine, 2017) -->
+    <target name="compile-risk" depends="compile-common"
+            description="Compile risk-engine module">
+        <mkdir dir="${build.dir}/risk-engine"/>
+        <javac srcdir="${risk.dir}/src"
+               destdir="${build.dir}/risk-engine"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+            </classpath>
+        </javac>
+    </target>
+
     <!-- Compile demo -->
     <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
             description="Compile demo runner">
@@ -270,7 +302,7 @@
     </target>
 
     <!-- Compile test suite -->
-    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives"
+    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk"
             description="Compile end-to-end test suite">
         <mkdir dir="${build.dir}/test"/>
         <javac srcdir="test/src"
@@ -288,13 +320,15 @@
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/derivatives-engine"/>
+                <pathelement location="${build.dir}/reporting-service"/>
+                <pathelement location="${build.dir}/risk-engine"/>
             </classpath>
         </javac>
     </target>
 
     <!-- Compile all -->
     <target name="compile" 
-            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-demo"
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk,compile-demo"
             description="Compile all modules"/>
 
     <!-- Package common-lib as JAR -->
@@ -384,6 +418,8 @@
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/derivatives-engine"/>
+                <pathelement location="${build.dir}/reporting-service"/>
+                <pathelement location="${build.dir}/risk-engine"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>

@@ -224,6 +224,75 @@ public class DatabaseBootstrap {
                 ")"
             );
 
+            // ====== Wave 10 (2015): Surveillance tables (REG-2015-001/002/003/004) ======
+
+            // SURVEILLANCE_AUDIT_LOG - separate audit trail for surveillance rules
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS SURVEILLANCE_AUDIT_LOG (" +
+                "  LOG_ID INTEGER IDENTITY PRIMARY KEY," +
+                "  RULE_NAME VARCHAR(100) NOT NULL," +
+                "  ORDER_ID VARCHAR(50)," +
+                "  CLIENT_ID VARCHAR(20)," +
+                "  SYMBOL VARCHAR(10)," +
+                "  RESULT VARCHAR(20)," +
+                "  SURVEILLANCE_FLAGS VARCHAR(200)," +
+                "  EVALUATION_TIME TIMESTAMP," +
+                "  DETAILS VARCHAR(500)" +
+                ")"
+            );
+
+            // POSITION_TRACKING - net position per client per symbol
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS POSITION_TRACKING (" +
+                "  CLIENT_ID VARCHAR(20) NOT NULL," +
+                "  SYMBOL VARCHAR(10) NOT NULL," +
+                "  NET_POSITION INTEGER DEFAULT 0," +
+                "  LAST_UPDATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  PRIMARY KEY (CLIENT_ID, SYMBOL)" +
+                ")"
+            );
+
+            // Add surveillance flag columns to TRADE_ORDERS if not exists
+            try {
+                stmt.executeUpdate("ALTER TABLE TRADE_ORDERS ADD COLUMN SURVEILLANCE_FLAGS VARCHAR(200) DEFAULT ''");
+            } catch (Exception e) {
+                // column may already exist
+            }
+
+            // ====== Wave 12 (2017): Risk engine tables ======
+
+            // RISK_ASSESSMENTS - risk calculation results
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS RISK_ASSESSMENTS (" +
+                "  RISK_ORDER_ID VARCHAR(50) PRIMARY KEY," +
+                "  SOURCE_ORDER_ID VARCHAR(50)," +
+                "  CLIENT_ID VARCHAR(20)," +
+                "  SYMBOL VARCHAR(10)," +
+                "  QUANTITY INTEGER," +
+                "  SIDE VARCHAR(4)," +
+                "  PRICE DECIMAL(15,4)," +
+                "  NOTIONAL_VALUE DECIMAL(20,4)," +
+                "  EXPOSURE_CONTRIBUTION DECIMAL(20,4)," +
+                "  VAR_CONTRIBUTION DECIMAL(20,4)," +
+                "  RISK_STATUS VARCHAR(20)," +
+                "  ASSESSMENT_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                ")"
+            );
+
+            // ====== Wave 14 (2021): Regulatory reporting tables (REG-2021-001) ======
+
+            // REG_REPORT_LOG - tracks regulatory report generation
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS REG_REPORT_LOG (" +
+                "  LOG_ID INTEGER IDENTITY PRIMARY KEY," +
+                "  REPORT_TYPE VARCHAR(50) NOT NULL," +
+                "  FILE_PATH VARCHAR(500)," +
+                "  RECORD_COUNT INTEGER DEFAULT 0," +
+                "  STATUS VARCHAR(50)," +
+                "  GENERATION_TIME TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                ")"
+            );
+
             // Insert sample data
             insertSampleData(stmt);
 
