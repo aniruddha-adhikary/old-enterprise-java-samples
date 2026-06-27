@@ -22,6 +22,8 @@ import com.bigcorp.common.rules.impl.SpecialClientsRule;
 import com.bigcorp.common.rules.impl.DailyVolumeLimitRule;
 import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
 import com.bigcorp.common.rules.impl.KYCStatusRule;
+import com.bigcorp.common.rules.impl.VolumeDiscountRule;
+import com.bigcorp.common.rules.impl.LoyaltyBonusRule;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.audit.consumer.AuditListener;
@@ -147,6 +149,9 @@ public class EndToEndTest {
             // Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
             phase14_wave5Cleanup();
 
+            // Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+            phase15_wave6VolumeAndLoyalty();
+
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
             e.printStackTrace();
@@ -217,8 +222,8 @@ public class EndToEndTest {
 
             ConnectionHelper.closeQuietly(stmt);
             ConnectionHelper.closeQuietly(conn);
-            assertTest("T1.3", "Sample data loaded (5 clients, 7 pricing records)", 
-                clientCount == 5 && pricingCount == 7,
+            assertTest("T1.3", "Sample data loaded (7 clients, 7 pricing records)", 
+                clientCount == 7 && pricingCount == 7,
                 "clients=" + clientCount + ", pricing=" + pricingCount);
         } catch (Exception e) {
             assertTest("T1.3", "Sample data loaded", false, e.getMessage());
@@ -1923,6 +1928,148 @@ public class EndToEndTest {
                 "short_sale_commission=" + stashedCommission + " expected=" + expectedCommission);
         } catch (Exception e) {
             assertTest("T14.5", "ShortSaleRule commission centralization", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+    // ========================================================================
+
+    private static void phase15_wave6VolumeAndLoyalty() {
+        System.out.println("=== Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl ===");
+        System.out.println();
+
+        // T15.1 - SpecialClientsRule now handles C005 (Pinnacle commission override)
+        try {
+            Client pinnacle = new Client();
+            pinnacle.setClientId("C005");
+            pinnacle.setTier(Client.TIER_BRONZE);
+            pinnacle.setMaxOrderValue(100000);
+            pinnacle.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, pinnacle);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object commOverride = ctx.getAttribute("commission_override");
+            assertTest("T15.1", "SpecialClientsRule: C005 (Pinnacle) gets 50% commission discount (JIRA-3401)",
+                commOverride != null && ((Double) commOverride).doubleValue() == 0.01,
+                "commission_override=" + commOverride);
+        } catch (Exception e) {
+            assertTest("T15.1", "SpecialClients C005 commission override", false, e.getMessage());
+        }
+
+        // T15.2 - VolumeDiscountRule sets volume_discount for large orders
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-002");
+            order.setQuantity(7500);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            VolumeDiscountRule volumeRule = new VolumeDiscountRule();
+            volumeRule.evaluate(ctx);
+            volumeRule.execute(ctx);
+
+            Object volumeDiscount = ctx.getAttribute("volume_discount");
+            Object applied = ctx.getAttribute("volume_discount_applied");
+            assertTest("T15.2", "VolumeDiscountRule: qty=7500 gets 25% volume discount",
+                volumeDiscount != null && ((Double) volumeDiscount).doubleValue() == 0.25
+                    && Boolean.TRUE.equals(applied),
+                "volume_discount=" + volumeDiscount + " applied=" + applied);
+        } catch (Exception e) {
+            assertTest("T15.2", "VolumeDiscountRule volume discount", false, e.getMessage());
+        }
+
+        // T15.3 - LoyaltyBonusRule sets loyalty_bonus for loyal clients
+        try {
+            Client acme = new Client();
+            acme.setClientId("C001");
+            acme.setTier(Client.TIER_GOLD);
+            acme.setMaxOrderValue(500000);
+            acme.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, acme);
+            LoyaltyBonusRule loyaltyRule = new LoyaltyBonusRule();
+            loyaltyRule.evaluate(ctx);
+            loyaltyRule.execute(ctx);
+
+            Object loyaltyBonus = ctx.getAttribute("loyalty_bonus");
+            assertTest("T15.3", "LoyaltyBonusRule: C001 (loyal client) gets 10% loyalty bonus",
+                loyaltyBonus != null && ((Double) loyaltyBonus).doubleValue() == 0.10,
+                "loyalty_bonus=" + loyaltyBonus);
+        } catch (Exception e) {
+            assertTest("T15.3", "LoyaltyBonusRule loyalty bonus", false, e.getMessage());
+        }
+
+        // T15.4 - Priority interaction bug: VolumeDiscount (55) runs BEFORE SpecialClients (50)
+        // in reversed comparator mode, but both set commission-related attributes.
+        // SpecialClients overwrites VolumeDiscount's work (last writer wins).
+        // Known issue: JIRA-6003 — VolumeDiscountRule's discount is overwritten by SpecialClientsRule due to evaluation order
+        try {
+            Client pinnacle = new Client();
+            pinnacle.setClientId("C005");
+            pinnacle.setTier(Client.TIER_BRONZE);
+            pinnacle.setMaxOrderValue(100000);
+            pinnacle.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE6-004");
+            order.setQuantity(7500);  // triggers volume discount
+            order.setRequestedPrice(10.00);
+
+            RuleContext ctx = new RuleContext(order, pinnacle);
+
+            // Simulate reversed priority ordering: VolumeDiscount(55) runs first, then SpecialClients(50)
+            VolumeDiscountRule volumeRule = new VolumeDiscountRule();
+            volumeRule.evaluate(ctx);
+            volumeRule.execute(ctx);
+
+            // VolumeDiscount should have set volume_discount
+            Object volumeDiscountAfterVolRule = ctx.getAttribute("volume_discount");
+
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            // SpecialClients sets commission_override for C005, overwriting any
+            // commission the VolumeDiscount rule might have intended
+            Object commOverride = ctx.getAttribute("commission_override");
+            Object volumeDiscountFinal = ctx.getAttribute("volume_discount");
+
+            // The volume_discount is still set but commission_override from SpecialClients
+            // takes precedence — the two don't compose, they overwrite.
+            // This is the emergent bug (JIRA-6003)
+            boolean volumeDiscountWasSet = volumeDiscountAfterVolRule != null
+                && ((Double) volumeDiscountAfterVolRule).doubleValue() == 0.25;
+            boolean commOverrideFromSpecial = commOverride != null
+                && ((Double) commOverride).doubleValue() == 0.01;
+
+            assertTest("T15.4", "Priority interaction bug (JIRA-6003): VolumeDiscount set but SpecialClients overwrites commission",
+                volumeDiscountWasSet && commOverrideFromSpecial,
+                "volume_discount=" + volumeDiscountFinal + " commission_override=" + commOverride
+                    + " (both set independently — no composition)");
+        } catch (Exception e) {
+            assertTest("T15.4", "Priority interaction bug", false, e.getMessage());
         }
 
         System.out.println();

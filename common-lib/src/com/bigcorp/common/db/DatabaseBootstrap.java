@@ -231,6 +231,8 @@ public class DatabaseBootstrap {
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C003', 'Smith & Associates', 'desk@smithassoc.com', '555-0300', 'SILVER', 250000.00, 1)");
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C004', 'MegaFund Inc', 'ops@megafund.com', '555-0400', 'GOLD', 1000000.00, 1)");
             stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C005', 'Pinnacle Investments', 'trade@pinnacle.com', '555-0500', 'BRONZE', 100000.00, 1)");
+            stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C006', 'Global Macro Fund', 'globalfund@trading.com', '555-0600', 'PLATINUM', 10000000.00, 1)");
+            stmt.executeUpdate("INSERT INTO CLIENTS (CLIENT_ID, CLIENT_NAME, EMAIL, PHONE, TIER, MAX_ORDER_VALUE, ACTIVE) VALUES ('C007', 'Velocity Trading LLC', 'trades@velocity.com', '555-0700', 'GOLD', 2000000.00, 1)");
 
             // Sample pricing data
             stmt.executeUpdate("INSERT INTO PRICING_CACHE (SYMBOL, BID_PRICE, ASK_PRICE, LAST_PRICE, CURRENCY) VALUES ('MSFT', 25.50, 25.75, 25.63, 'USD')");

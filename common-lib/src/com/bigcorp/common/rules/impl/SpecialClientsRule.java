@@ -63,8 +63,29 @@ public class SpecialClientsRule implements Rule {
             context.addMessage("MegaFund: PLATINUM pricing override applied");
         }
 
-        // NOTE: Pinnacle Investments (C005) was supposed to be added here
-        // for reduced fees but the sales person left before documenting
-        // what "reduced fees" meant. Ticket JIRA-3401 is open for this.
+        // Added per email from VP Sales 2009-03-10, Smith gets GOLD-tier pricing
+        if ("C003".equals(clientId)) {
+            context.setAttribute("commission_override", Double.valueOf(0.01));
+            context.addMessage("Smith & Associates: GOLD-tier commission applied (1.0%)");
+        }
+
+        // JIRA-3401 finally implemented after 10 years — Pinnacle gets half-price commission
+        if ("C005".equals(clientId)) {
+            context.setAttribute("commission_override", Double.valueOf(0.01));  // 50% off BRONZE 2%
+            context.addMessage("Pinnacle Investments: 50% commission discount applied");
+        }
+
+        // C006 added per CEO directive 2009-06-01, no commission + early access
+        if ("C006".equals(clientId)) {
+            context.setAttribute("commission_override", Double.valueOf(0.0));
+            context.setAttribute("early_access", Boolean.TRUE);
+            context.addMessage("Global Macro Fund: zero commission + early access (CEO directive)");
+        }
+
+        // C007 special pricing deal — sales promised PLATINUM rates
+        if ("C007".equals(clientId)) {
+            context.setAttribute("pricing_tier_override", Client.TIER_PLATINUM);
+            context.addMessage("Velocity Trading: PLATINUM pricing override applied");
+        }
     }
 }

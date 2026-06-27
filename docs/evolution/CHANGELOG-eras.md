@@ -84,3 +84,17 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Could not fully clean up: derivatives-engine still has its own FX_COMMISSION, string-keyed attributes still widely used
 
 ---
+
+## 2009 Q2 — Tiered commission and special-client sprawl — engineer: feature-rusher
+
+**Wave 6**
+
+- Extended SpecialClientsRule with C003, C005, C006, C007 hardcoded overrides (sprawl continues)
+- Finally resolved JIRA-3401 (Pinnacle reduced fees) after 10 years
+- Added C006 (Global Macro Fund) and C007 (Velocity Trading) to client data
+- Added VolumeDiscountRule (priority 55) with copy-pasted commission constant
+- Added LoyaltyBonusRule (priority 45) with hardcoded loyal client list
+- Known bug: JIRA-6003 — VolumeDiscountRule and SpecialClientsRule overlap on commission attributes due to priority ordering
+- New context attributes: volume_discount, volume_discount_applied, loyalty_bonus
+
+---

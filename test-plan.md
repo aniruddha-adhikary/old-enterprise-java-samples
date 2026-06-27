@@ -364,6 +364,36 @@ ant run-demo
 
 ---
 
+## Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
+
+### T15.1 — SpecialClientsRule handles C005 (Pinnacle commission override)
+**Action:** Create order for C005 (Pinnacle, BRONZE), evaluate via SpecialClientsRule
+**Verify:** commission_override = 0.01 (50% off BRONZE 2% rate — JIRA-3401 finally resolved)
+
+### T15.2 — VolumeDiscountRule sets volume_discount for large orders
+**Action:** Create order with qty=7500, evaluate via VolumeDiscountRule
+**Verify:**
+- volume_discount = 0.25 (25% off for qty > 5000)
+- volume_discount_applied = Boolean.TRUE
+
+### T15.3 — LoyaltyBonusRule sets loyalty_bonus for loyal clients
+**Action:** Create order for C001 (loyal client since 1999), evaluate via LoyaltyBonusRule
+**Verify:** loyalty_bonus = 0.10 (10% additional discount)
+
+### T15.4 — Priority interaction bug (JIRA-6003)
+**Action:** Simulate reversed priority ordering — VolumeDiscount(55) runs before SpecialClients(50). Both set commission-related attributes for C005.
+**Verify:**
+- VolumeDiscountRule sets volume_discount = 0.25
+- SpecialClientsRule sets commission_override = 0.01
+- Both attributes coexist but don't compose — no rule combines them
+- Known issue: JIRA-6003 — VolumeDiscountRule's discount is overwritten by SpecialClientsRule due to evaluation order. The volume_discount attribute is set but ignored because commission_override takes precedence downstream.
+
+**Known issue / JIRA-6003:** VolumeDiscountRule and SpecialClientsRule overlap on commission attributes due to priority ordering. VolumeDiscount (priority 55) runs BEFORE SpecialClients (priority 50) in reversed comparator mode, but SpecialClients overwrites the commission_override. The two rules don't compose their discounts.
+
+**Known issue / JIRA-4102:** T10.2 count now 10 (was 8, was 5, was 4) — VolumeDiscountRule and LoyaltyBonusRule added to config.
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:
