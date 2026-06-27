@@ -1282,10 +1282,12 @@ public class EndToEndTest {
         }
 
         // T10.2 - Loaded rules include the original 4 core types (plus later additions)
-        // Updated: Wave 2 added RestrictedSymbol, Wave 4 added compliance rules (now 8 total)
+        // Updated: Wave 2 added RestrictedSymbol, Wave 4 added compliance rules,
+        // Wave 5 added none, Wave 6 added VolumeDiscount+LoyaltyBonus,
+        // Wave 7 added MarketHalt+ClientKillSwitch (now 12 total)
         try {
             List rules = RuleConfigLoader.loadRules();
-            boolean correctCount = (rules.size() == 8);
+            boolean correctCount = (rules.size() == 12);
 
             boolean hasMaxOrder = false;
             boolean hasClientTier = false;
@@ -1303,7 +1305,7 @@ public class EndToEndTest {
             }
 
             boolean corePresent = hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients && hasRestricted;
-            assertTest("T10.2", "Config loads 8 rules including core 4 + RestrictedSymbol + compliance",
+            assertTest("T10.2", "Config loads 12 rules including core 4 + all wave additions",
                 correctCount && corePresent,
                 "count=" + rules.size() + ", maxOrder=" + hasMaxOrder
                 + ", clientTier=" + hasClientTier + ", marketHours=" + hasMarketHours
