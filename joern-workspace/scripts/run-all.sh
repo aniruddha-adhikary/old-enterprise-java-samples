@@ -37,6 +37,10 @@ SCRIPTS=(
     "06-commission-and-pricing"
     "07-integration-topology"
     "08-anomalies-and-debt"
+    "09-jira-references"
+    "10-state-machines"
+    "11-sql-schema"
+    "12-context-attributes"
 )
 
 for script in "${SCRIPTS[@]}"; do
