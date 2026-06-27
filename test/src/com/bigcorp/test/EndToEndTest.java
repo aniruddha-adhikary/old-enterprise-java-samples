@@ -23,6 +23,15 @@ import com.bigcorp.pricing.service.PricingServiceImpl;
 import com.bigcorp.settlement.batch.BatchProcessor;
 import com.bigcorp.settlement.generator.SettlementFileGenerator;
 import com.bigcorp.tradedesk.mq.TradeMessageProducer;
+import com.bigcorp.common.service.ServiceLocator;
+import com.bigcorp.common.db.ConnectionPool;
+import com.bigcorp.common.db.DAOFactory;
+import com.bigcorp.common.dto.OrderTransferObject;
+import com.bigcorp.common.dto.SettlementTransferObject;
+import com.bigcorp.common.dto.TransferObjectAssembler;
+import com.bigcorp.settlement.reconciliation.ReconciliationProcessor;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -97,6 +106,9 @@ public class EndToEndTest {
 
             // Phase 8: Multi-Order Stress
             phase8_multiOrder();
+
+            // Phase 9: Enterprise Patterns (J2EE circa 2001)
+            phase9_enterprisePatterns();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -785,6 +797,280 @@ public class EndToEndTest {
     }
 
     // ========================================================================
+    // Phase 9: Enterprise Patterns
+    // ========================================================================
+
+    private static void phase9_enterprisePatterns() {
+        System.out.println("=== Phase 9: Enterprise Patterns (J2EE circa 2001) ===");
+        System.out.println();
+
+        // -- T9.1: Service Locator --
+        try {
+            ServiceLocator locator = ServiceLocator.getInstance();
+            locator.clearCache();
+
+            PricingServiceImpl pricingSvc = new PricingServiceImpl();
+            locator.register(ServiceLocator.PRICING_SERVICE, pricingSvc);
+
+            Object looked = locator.lookup(ServiceLocator.PRICING_SERVICE);
+            assertTest("T9.1", "Service Locator register + lookup",
+                looked != null && looked instanceof PricingServiceImpl);
+        } catch (Exception e) {
+            assertTest("T9.1", "Service Locator", false, e.getMessage());
+        }
+
+        // -- T9.2: Service Locator cache miss returns null --
+        try {
+            ServiceLocator locator = ServiceLocator.getInstance();
+            Object missing = locator.lookup("java:comp/env/ejb/NonExistentService");
+            assertTest("T9.2", "Service Locator cache miss returns null",
+                missing == null);
+        } catch (Exception e) {
+            assertTest("T9.2", "Service Locator cache miss", false, e.getMessage());
+        }
+
+        // -- T9.3: Connection Pool get/release --
+        try {
+            ConnectionPool pool = ConnectionPool.getInstance();
+            int beforeAvail = pool.getAvailableCount();
+
+            java.sql.Connection conn = pool.getConnection();
+            boolean gotConn = (conn != null && !conn.isClosed());
+
+            // verify pool accounting
+            int usedDuring = pool.getUsedCount();
+
+            pool.releaseConnection(conn);
+            int afterAvail = pool.getAvailableCount();
+
+            assertTest("T9.3", "Connection Pool get/release cycle",
+                gotConn && usedDuring >= 1,
+                "avail_before=" + beforeAvail + " used_during=" + usedDuring + " avail_after=" + afterAvail);
+        } catch (Exception e) {
+            assertTest("T9.3", "Connection Pool", false, e.getMessage());
+        }
+
+        // -- T9.4: Connection Pool SQL works --
+        try {
+            ConnectionPool pool = ConnectionPool.getInstance();
+            java.sql.Connection conn = pool.getConnection();
+            java.sql.Statement stmt = conn.createStatement();
+            java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM CLIENTS");
+            rs.next();
+            int clientCount = rs.getInt(1);
+            rs.close();
+            stmt.close();
+            pool.releaseConnection(conn);
+
+            assertTest("T9.4", "Connection Pool SQL query works",
+                clientCount >= 5, "clients=" + clientCount);
+        } catch (Exception e) {
+            assertTest("T9.4", "Connection Pool SQL", false, e.getMessage());
+        }
+
+        // -- T9.5: DAO Factory auto-detection --
+        try {
+            DAOFactory factory = DAOFactory.getFactory();
+            String orderDAO = factory.getOrderDAOClassName();
+            String settlementDAO = factory.getSettlementDAOClassName();
+
+            boolean hasOrderDAO = (orderDAO != null && orderDAO.length() > 0);
+            boolean hasSettlementDAO = (settlementDAO != null && settlementDAO.length() > 0);
+
+            // verify it detected the right DB type
+            int dbType = DAOFactory.detectDatabaseType();
+            String dbName = (dbType == DAOFactory.ORACLE) ? "Oracle" : "HSQLDB";
+
+            assertTest("T9.5", "DAO Factory auto-detects " + dbName + " and returns DAO class names",
+                hasOrderDAO && hasSettlementDAO,
+                "orderDAO=" + orderDAO + " settlementDAO=" + settlementDAO);
+        } catch (Exception e) {
+            assertTest("T9.5", "DAO Factory", false, e.getMessage());
+        }
+
+        // -- T9.6: Transfer Object from domain --
+        try {
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("ORD-TEST-DTO-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide("BUY");
+            order.setPrice(25.50);
+            order.setRequestedPrice(25.00);
+            order.setStatus("FILLED");
+            order.setOrderDate(new Date());
+
+            OrderTransferObject dto = OrderTransferObject.fromTradeOrder(order);
+            boolean matches = dto != null
+                && "ORD-TEST-DTO-001".equals(dto.getOrderId())
+                && "MSFT".equals(dto.getSymbol())
+                && dto.getQuantity() == 100
+                && "BUY".equals(dto.getSide())
+                && Math.abs(dto.getPrice() - 25.50) < 0.01;
+
+            assertTest("T9.6", "OrderTransferObject.fromTradeOrder preserves data", matches);
+        } catch (Exception e) {
+            assertTest("T9.6", "Transfer Object from domain", false, e.getMessage());
+        }
+
+        // -- T9.7: Transfer Object XML round-trip --
+        try {
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("ORD-TEST-DTO-002");
+            order.setClientId("C002");
+            order.setSymbol("IBM");
+            order.setQuantity(500);
+            order.setSide("SELL");
+            order.setPrice(120.00);
+            order.setRequestedPrice(119.50);
+            order.setStatus("FILLED");
+
+            OrderTransferObject original = OrderTransferObject.fromTradeOrder(order);
+            String xml = original.toXml();
+            OrderTransferObject parsed = OrderTransferObject.fromXml(xml);
+
+            boolean roundTrip = parsed != null
+                && "ORD-TEST-DTO-002".equals(parsed.getOrderId())
+                && "IBM".equals(parsed.getSymbol())
+                && parsed.getQuantity() == 500
+                && "SELL".equals(parsed.getSide())
+                && Math.abs(parsed.getPrice() - 120.00) < 0.01;
+
+            assertTest("T9.7", "OrderTransferObject XML round-trip", roundTrip,
+                xml.contains("<orderId>ORD-TEST-DTO-002</orderId>") ? "xml OK" : "xml malformed");
+        } catch (Exception e) {
+            assertTest("T9.7", "Transfer Object XML round-trip", false, e.getMessage());
+        }
+
+        // -- T9.8: TransferObjectAssembler --
+        try {
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("ORD-TEST-DTO-003");
+            order.setClientId("C003");
+            order.setSymbol("ORCL");
+            order.setQuantity(200);
+            order.setSide("BUY");
+            order.setPrice(15.00);
+
+            Client client = new Client();
+            client.setClientId("C003");
+            client.setName("Smith & Associates");
+            client.setTier(Client.TIER_SILVER);
+
+            OrderTransferObject assembled = TransferObjectAssembler.assembleOrderTO(order, client);
+            assertTest("T9.8", "TransferObjectAssembler populates clientName",
+                assembled != null && "Smith & Associates".equals(assembled.getClientName()));
+        } catch (Exception e) {
+            assertTest("T9.8", "TransferObjectAssembler", false, e.getMessage());
+        }
+
+        // -- T9.9: Inbound reconciliation (.dat format) --
+        try {
+            // We need settlement records to exist first. Check if any uploaded records exist
+            // from earlier phases (phase 4 and phase 8 created them).
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT RECORD_ID FROM SETTLEMENT_RECORDS WHERE STATUS = '" + SettlementRecord.STATUS_UPLOADED + "'");
+
+            java.util.List recordIds = new java.util.ArrayList();
+            while (rs.next() && recordIds.size() < 3) {
+                recordIds.add(rs.getString("RECORD_ID"));
+            }
+            rs.close();
+            stmt.close();
+            ConnectionHelper.closeQuietly(conn);
+
+            if (recordIds.size() > 0) {
+                // generate a test .dat reconciliation file
+                String[] ids = new String[recordIds.size()];
+                for (int i = 0; i < recordIds.size(); i++) {
+                    ids[i] = (String) recordIds.get(i);
+                }
+
+                // generate locally first, then put in the right place
+                File tempDir = new File("./sftp-root/inbound/");
+                tempDir.mkdirs();
+                String datFilePath = tempDir.getAbsolutePath() + "/test_recon.dat";
+                ReconciliationProcessor.generateTestReconciliationFile(datFilePath, ids, "dat");
+
+                // if real SFTP is configured, upload the file to the server's /outgoing/
+                // directory (simulating the clearinghouse dropping a file there)
+                uploadReconFileIfReal(datFilePath, "test_recon.dat");
+
+                // process inbound
+                ReconciliationProcessor processor = new ReconciliationProcessor();
+                int processed = processor.processInbound();
+
+                assertTest("T9.9", "Inbound reconciliation .dat processing",
+                    processed > 0, "processed=" + processed + " records from .dat");
+            } else {
+                // no uploaded records to reconcile - skip gracefully
+                assertTest("T9.9", "Inbound reconciliation .dat processing",
+                    true, "skipped - no UPLOADED settlement records available");
+            }
+        } catch (Exception e) {
+            assertTest("T9.9", "Inbound reconciliation", false, e.getMessage());
+        }
+
+        // -- T9.10: Inbound reconciliation (.xml format) --
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            // find records with UPLOADED status (may have been set to RECONCILED by T9.9)
+            ResultSet rs = stmt.executeQuery(
+                "SELECT RECORD_ID FROM SETTLEMENT_RECORDS WHERE STATUS = '" + SettlementRecord.STATUS_UPLOADED
+                + "' OR STATUS = '" + SettlementRecord.STATUS_RECONCILED + "'");
+
+            java.util.List recordIds = new java.util.ArrayList();
+            while (rs.next() && recordIds.size() < 2) {
+                recordIds.add(rs.getString("RECORD_ID"));
+            }
+            rs.close();
+            stmt.close();
+            ConnectionHelper.closeQuietly(conn);
+
+            if (recordIds.size() > 0) {
+                // set status back to UPLOADED so reconciliation has something to find
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                for (int i = 0; i < recordIds.size(); i++) {
+                    stmt.executeUpdate("UPDATE SETTLEMENT_RECORDS SET STATUS = 'UPLOADED' WHERE RECORD_ID = '" + recordIds.get(i) + "'");
+                }
+                stmt.close();
+                ConnectionHelper.closeQuietly(conn);
+
+                String[] ids = new String[recordIds.size()];
+                for (int i = 0; i < recordIds.size(); i++) {
+                    ids[i] = (String) recordIds.get(i);
+                }
+
+                File tempDir = new File("./sftp-root/inbound/");
+                tempDir.mkdirs();
+                String xmlFilePath = tempDir.getAbsolutePath() + "/test_recon.xml";
+                ReconciliationProcessor.generateTestReconciliationFile(xmlFilePath, ids, "xml");
+
+                // if real SFTP is configured, upload to the server's /outgoing/ dir
+                uploadReconFileIfReal(xmlFilePath, "test_recon.xml");
+
+                ReconciliationProcessor processor = new ReconciliationProcessor();
+                int processed = processor.processInbound();
+
+                assertTest("T9.10", "Inbound reconciliation .xml processing",
+                    processed > 0, "processed=" + processed);
+            } else {
+                assertTest("T9.10", "Inbound reconciliation .xml processing",
+                    true, "skipped - no settlement records available");
+            }
+        } catch (Exception e) {
+            assertTest("T9.10", "Inbound reconciliation XML", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
     // Helpers
     // ========================================================================
 
@@ -916,6 +1202,60 @@ public class EndToEndTest {
         }
         reader.close();
         return sb.toString();
+    }
+
+    /**
+     * If real SFTP is configured, upload the reconciliation file to the server's
+     * /outgoing/ directory to simulate the clearinghouse dropping a file there.
+     * In embedded mode (no SFTP), this is a no-op since the SftpPoller falls back
+     * to the local ./sftp-root/inbound/ directory where we already generated it.
+     */
+    private static void uploadReconFileIfReal(String localFilePath, String remoteFileName) {
+        try {
+            java.util.Properties props = new java.util.Properties();
+            java.io.InputStream is = EndToEndTest.class.getClassLoader()
+                    .getResourceAsStream("settlement.properties");
+            if (is != null) {
+                props.load(is);
+                is.close();
+            }
+
+            String host = props.getProperty("sftp.host", "");
+            if (host == null || host.trim().length() == 0) {
+                // embedded mode — file is already in ./sftp-root/inbound/, SftpPoller will read it
+                return;
+            }
+
+            int port = Integer.parseInt(props.getProperty("sftp.port", "22"));
+            String username = props.getProperty("sftp.username", "");
+            String password = props.getProperty("sftp.password", "");
+            String remoteInboundDir = props.getProperty("sftp.remote.inbound.dir", "/outgoing/");
+
+            JSch jsch = new JSch();
+            com.jcraft.jsch.Session session = jsch.getSession(username, host, port);
+            session.setPassword(password);
+            java.util.Properties sshConfig = new java.util.Properties();
+            sshConfig.put("StrictHostKeyChecking", "no");
+            session.setConfig(sshConfig);
+            session.connect(30000);
+
+            com.jcraft.jsch.Channel channel = session.openChannel("sftp");
+            channel.connect(30000);
+            ChannelSftp sftpChannel = (ChannelSftp) channel;
+
+            sftpChannel.cd(remoteInboundDir);
+            java.io.FileInputStream fis = new java.io.FileInputStream(localFilePath);
+            sftpChannel.put(fis, remoteFileName);
+            fis.close();
+
+            System.out.println("  Uploaded test recon file to SFTP " + remoteInboundDir + remoteFileName);
+
+            channel.disconnect();
+            session.disconnect();
+        } catch (Exception e) {
+            System.err.println("  WARN: Could not upload recon file to SFTP: " + e.getMessage());
+            // fallback — the local file is still there for non-SFTP processing
+        }
     }
 
     private static void deleteDir(File dir) {

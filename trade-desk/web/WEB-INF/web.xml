@@ -22,6 +22,65 @@
         Trading Desk. Part of the BigCorp Trade Order Management System.
     </description>
 
+    <!--
+      ============================================================
+      Filters (added in v2.0 architecture improvement - 2002)
+      Order matters! Logging first, then encoding, then auth.
+      ============================================================
+    -->
+
+    <!-- Request Logging Filter - logs all requests with timing -->
+    <filter>
+        <filter-name>RequestLoggingFilter</filter-name>
+        <filter-class>com.bigcorp.tradedesk.filter.RequestLoggingFilter</filter-class>
+    </filter>
+
+    <!-- Character Encoding Filter - forces ISO-8859-1 -->
+    <filter>
+        <filter-name>CharacterEncodingFilter</filter-name>
+        <filter-class>com.bigcorp.tradedesk.filter.CharacterEncodingFilter</filter-class>
+        <init-param>
+            <param-name>encoding</param-name>
+            <param-value>ISO-8859-1</param-value>
+        </init-param>
+    </filter>
+
+    <!--
+      Authentication Filter - currently DISABLED (JIRA-2890)
+      Will be enabled when LDAP integration is complete.
+      Set auth-enabled to "true" to turn on authentication.
+    -->
+    <filter>
+        <filter-name>AuthenticationFilter</filter-name>
+        <filter-class>com.bigcorp.tradedesk.filter.AuthenticationFilter</filter-class>
+        <init-param>
+            <param-name>auth-enabled</param-name>
+            <param-value>false</param-value>
+        </init-param>
+    </filter>
+
+    <!-- Filter mappings -->
+    <filter-mapping>
+        <filter-name>RequestLoggingFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <filter-mapping>
+        <filter-name>CharacterEncodingFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <filter-mapping>
+        <filter-name>AuthenticationFilter</filter-name>
+        <url-pattern>/controller/*</url-pattern>
+    </filter-mapping>
+
+    <!--
+      ============================================================
+      Servlets
+      ============================================================
+    -->
+
     <!-- Order Entry Servlet -->
     <servlet>
         <servlet-name>OrderEntryServlet</servlet-name>
@@ -43,6 +102,27 @@
     <servlet-mapping>
         <servlet-name>OrderStatusServlet</servlet-name>
         <url-pattern>/order/status</url-pattern>
+    </servlet-mapping>
+
+    <!--
+      Front Controller Servlet (v2.0)
+      Maps to both /controller/* and *.do patterns.
+      The old servlets above still work - this is an alternative.
+    -->
+    <servlet>
+        <servlet-name>FrontControllerServlet</servlet-name>
+        <servlet-class>com.bigcorp.tradedesk.controller.FrontControllerServlet</servlet-class>
+        <load-on-startup>2</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>FrontControllerServlet</servlet-name>
+        <url-pattern>/controller/*</url-pattern>
+    </servlet-mapping>
+
+    <servlet-mapping>
+        <servlet-name>FrontControllerServlet</servlet-name>
+        <url-pattern>*.do</url-pattern>
     </servlet-mapping>
 
     <!-- Welcome file list -->
