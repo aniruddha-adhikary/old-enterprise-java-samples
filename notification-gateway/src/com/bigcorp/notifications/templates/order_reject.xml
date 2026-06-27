@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Order Rejection Email Template
+  BigCorp Trading Systems
+  
+  Placeholders:
+    ${orderId}    - The trade order ID
+    ${reason}     - Rejection reason
+    ${clientName} - Client name/email
+-->
+<emailTemplate>
+  <body>
+Dear Valued Client,
+
+We regret to inform you that your trade order could not be processed.
+
+Order Details:
+  Order ID:    ${orderId}
+  Status:      REJECTED
+
+Reason for Rejection:
+  ${reason}
+
+Please contact the BigCorp Trading Desk immediately to discuss
+this matter and explore alternative options:
+
+  Phone:  1-800-BIG-CORP (1-800-244-2677)
+  Email:  tradingdesk@bigcorp.com
+  Hours:  Monday-Friday, 8:00 AM - 6:00 PM EST
+
+Our representatives can assist you with resubmitting your order
+or adjusting the parameters to meet current market conditions
+and compliance requirements.
+
+Regards,
+BigCorp Trade Operations
+
+---
+DISCLAIMER: This is an automated notification from BigCorp Trading
+Systems. This message is for informational purposes only. Order
+rejections may occur due to market conditions, insufficient funds,
+regulatory restrictions, or system limitations. Please contact the
+Trading Desk for full details regarding your rejection.
+  </body>
+</emailTemplate>
