@@ -88,6 +88,10 @@
         <get src="${maven.repo}/org/apache/sshd/sshd-sftp/2.9.2/sshd-sftp-2.9.2.jar"
              dest="${lib.dir}/sshd-sftp-2.9.2.jar" skipexisting="true"/>
 
+        <!-- Oracle JDBC driver (for real infra mode) -->
+        <get src="${maven.repo}/com/oracle/database/jdbc/ojdbc11/21.9.0.0/ojdbc11-21.9.0.0.jar"
+             dest="${lib.dir}/ojdbc11-21.9.0.0.jar" skipexisting="true"/>
+
         <!-- SLF4J (needed by some deps) -->
         <get src="${maven.repo}/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar"
              dest="${lib.dir}/slf4j-api-1.7.36.jar" skipexisting="true"/>
@@ -340,6 +344,45 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/test"/>
+            </classpath>
+        </java>
+    </target>
+
+    <!-- Run end-to-end tests against REAL infrastructure (Oracle, ActiveMQ, SFTP) -->
+    <!-- Requires: docker containers running (see infra/start-infra.sh) -->
+    <target name="run-test-real" depends="compile-test"
+            description="Run end-to-end tests against real infrastructure">
+        <java classname="com.bigcorp.test.EndToEndTest" fork="true"
+              failonerror="true">
+            <classpath>
+                <!-- config/real/ FIRST so its .properties override embedded ones -->
+                <pathelement location="config/real"/>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/test"/>
+            </classpath>
+        </java>
+    </target>
+
+    <!-- Run demo against REAL infrastructure -->
+    <target name="run-demo-real" depends="compile"
+            description="Run demo against real infrastructure">
+        <java classname="com.bigcorp.demo.DemoRunner" fork="true">
+            <classpath>
+                <pathelement location="config/real"/>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>
     </target>

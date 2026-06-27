@@ -19,9 +19,50 @@ import java.sql.Statement;
 public class DatabaseBootstrap {
 
     /**
+     * Check if we're running against Oracle.
+     * If so, the DBA already ran the schema script and we skip DDL.
+     */
+    private static boolean isOracle() {
+        Connection conn = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            String dbProduct = conn.getMetaData().getDatabaseProductName();
+            return dbProduct != null && dbProduct.toLowerCase().contains("oracle");
+        } catch (Exception e) {
+            return false;
+        } finally {
+            ConnectionHelper.closeQuietly(conn);
+        }
+    }
+
+    /**
      * Create all tables. Safe to call multiple times.
+     * On Oracle, assumes the DBA already ran schema-oracle.sql.
      */
     public static void bootstrap() {
+        if (isOracle()) {
+            System.out.println("Oracle database detected - skipping DDL (schema managed by DBA).");
+            // Just verify we can connect and tables exist
+            Connection conn = null;
+            Statement stmt = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM CLIENTS");
+                rs.next();
+                int cnt = rs.getInt(1);
+                rs.close();
+                System.out.println("Database bootstrap verified: " + cnt + " clients in Oracle.");
+            } catch (Exception e) {
+                System.err.println("ERROR: Oracle tables not found. Run sql/schema-oracle.sql first!");
+                e.printStackTrace();
+            } finally {
+                ConnectionHelper.closeQuietly(stmt);
+                ConnectionHelper.closeQuietly(conn);
+            }
+            return;
+        }
+
         Connection conn = null;
         Statement stmt = null;
         try {

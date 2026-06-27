@@ -1,0 +1,24 @@
+# SFTP server config for BigCorp clearinghouse simulation
+# Enables legacy key exchange algorithms for JSch 0.1.55 compatibility
+
+Port 22
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Allow legacy algorithms for JSch 0.1.55
+KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512
+HostKeyAlgorithms ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-ed25519
+PubkeyAcceptedAlgorithms ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-ed25519
+
+Subsystem sftp internal-sftp
+
+PasswordAuthentication yes
+ChallengeResponseAuthentication no
+UsePAM yes
+
+# Chroot users to their home
+Match User bigcorp_settle
+    ChrootDirectory %h
+    ForceCommand internal-sftp
+    AllowTcpForwarding no

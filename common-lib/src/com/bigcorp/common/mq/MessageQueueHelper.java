@@ -40,6 +40,15 @@ public class MessageQueueHelper {
     private static boolean initialized = false;
 
     /**
+     * Reset the MQ helper so it can be re-initialized with different config.
+     */
+    public static synchronized void reset() {
+        initialized = false;
+        brokerUrl = null;
+        connectionFactory = null;
+    }
+
+    /**
      * Initialize the message queue connection.
      */
     public static synchronized void init() {
