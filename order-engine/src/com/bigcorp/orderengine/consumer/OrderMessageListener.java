@@ -14,6 +14,9 @@ import com.bigcorp.common.rules.impl.MarketHoursRule;
 import com.bigcorp.common.rules.impl.MaxOrderValueRule;
 import com.bigcorp.common.rules.impl.ShortSaleRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
+import com.bigcorp.common.rules.impl.DailyVolumeLimitRule;
+import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
+import com.bigcorp.common.rules.impl.KYCStatusRule;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.orderengine.dao.OrderDAO;
 import com.bigcorp.orderengine.soap.PricingServiceClient;
@@ -62,6 +65,10 @@ public class OrderMessageListener {
     // maximum price deviation allowed (10%) - checked MANUALLY in addition
     // to the rule engine check because "belt and suspenders" - Bob
     private static final double MAX_PRICE_DEVIATION = 0.10;
+
+    // Belt and suspenders - compliance insists on this manual check
+    // in addition to the rule (REG-2005-003)
+    private static final int MANUAL_VOLUME_LIMIT = 50000;
 
     private boolean running = false;
     private OrderDAO orderDAO;
@@ -230,6 +237,18 @@ public class OrderMessageListener {
             return;
         }
         System.out.println("Order passed all rules");
+
+        // Belt and suspenders - compliance insists on this manual check in addition to the rule (REG-2005-003)
+        // This duplicates the DailyVolumeLimitRule check, but after the 2005 incident
+        // compliance wants a second check here "just in case the rule engine is bypassed"
+        if (order.getQuantity() > MANUAL_VOLUME_LIMIT) {
+            System.out.println("COMPLIANCE WARNING: Order quantity " + order.getQuantity()
+                + " exceeds manual volume limit " + MANUAL_VOLUME_LIMIT
+                + " for order " + order.getOrderId() + " (REG-2005-003)");
+            // Don't reject here - the rule engine already handles it.
+            // This is just an extra warning in case the rule was somehow skipped.
+            // Logging to console for now; TODO: write to AUDIT_LOG table (JIRA-5100)
+        }
 
         // 4. get price quote from pricing service
         double quotedPrice = pricingClient.getQuote(order.getSymbol());

@@ -70,6 +70,7 @@ public class DatabaseBootstrap {
             stmt = conn.createStatement();
 
             // CLIENTS table
+            // KYC_STATUS column added post-2005 regulatory review
             stmt.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS CLIENTS (" +
                 "  CLIENT_ID VARCHAR(20) PRIMARY KEY," +
@@ -79,9 +80,20 @@ public class DatabaseBootstrap {
                 "  TIER VARCHAR(10) DEFAULT 'BRONZE'," +
                 "  MAX_ORDER_VALUE DECIMAL(15,2) DEFAULT 100000.00," +
                 "  ACTIVE INTEGER DEFAULT 1," +
+                "  KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'," +
                 "  CREATED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                 ")"
             );
+
+            // Add KYC_STATUS column if table already exists without it
+            // (migration safety for existing databases)
+            try {
+                stmt.executeUpdate(
+                    "ALTER TABLE CLIENTS ADD COLUMN KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'"
+                );
+            } catch (Exception alreadyExists) {
+                // column already exists, ignore
+            }
 
             // TRADE_ORDERS table
             stmt.executeUpdate(
@@ -162,6 +174,17 @@ public class DatabaseBootstrap {
                 "  NET_AMOUNT DECIMAL(15,4) NOT NULL," +
                 "  CHARGED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
                 "  STATUS VARCHAR(15) DEFAULT 'CHARGED'" +
+                ")"
+            );
+
+            // DAILY_VOLUME_TRACKER - Table added for regulatory tracking (REG-2005-001)
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS DAILY_VOLUME_TRACKER (" +
+                "  CLIENT_ID VARCHAR(20) NOT NULL," +
+                "  TRADE_DATE DATE NOT NULL," +
+                "  TOTAL_SHARES INTEGER DEFAULT 0," +
+                "  LAST_UPDATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  PRIMARY KEY (CLIENT_ID, TRADE_DATE)" +
                 ")"
             );
 

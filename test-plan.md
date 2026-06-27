@@ -303,6 +303,40 @@ ant run-demo
 
 ---
 
+## Phase 13: Compliance Rules (post-2005 regulatory incident)
+
+### T13.1 — DailyVolumeLimitRule passes for normal-sized order
+**Action:** Create order with 1,000 shares, evaluate via DailyVolumeLimitRule
+**Verify:** Rule returns true, context is not rejected (< 50,000 share limit)
+
+### T13.2 — DailyVolumeLimitRule rejects oversized order
+**Action:** Create order with 60,000 shares, evaluate via DailyVolumeLimitRule
+**Verify:** Rule returns false, context rejected with reason containing "REG-2005-001"
+
+### T13.3 — KYCStatusRule passes for approved client
+**Action:** Create order for client C001 (KYC_STATUS='APPROVED'), evaluate via KYCStatusRule
+**Verify:** Rule returns true, context attribute `kyc_status` is set
+
+### T13.4 — WashTradeDetectionRule passes when no wash trade pattern exists
+**Action:** Create BUY order for C001/INTC, evaluate via WashTradeDetectionRule
+**Verify:** Rule returns true, no wash trade detected (no recent opposite-side order)
+
+### T13.5 — Compliance context attributes set after all three rules
+**Action:** Run DailyVolumeLimitRule, WashTradeDetectionRule, and KYCStatusRule on a valid order
+**Verify:**
+- `daily_volume_checked` = Boolean.TRUE
+- `compliance_flags` = "VOLUME_CHECKED"
+- `wash_trade_checked` = Boolean.TRUE
+- `kyc_status` is not null
+
+**Known issue / JIRA-5200:** T2.3 (SELL ORCL) intermittently fails with status=NEW due to race condition — compliance rule DB queries (KYCStatus, WashTradeDetection) add latency that exceeds the 5-second wait in submitAndVerify. T4.5 fails as a consequence (order never reached FILLED so can't be SETTLED).
+
+**Known issue / JIRA-5201:** T10.4 now fails because the config-loaded RuleEngine includes compliance rules (KYCStatus, DailyVolumeLimit, WashTradeDetection) which reject the test order — the test creates a TradeOrder without setting clientId on the order object, so WashTradeDetectionRule rejects it with "Client ID is null".
+
+**Known issue / JIRA-4102:** T10.2 fails because it expects 4 rules in config but Wave 2 added RestrictedSymbolRule and Wave 4 added 3 compliance rules (now 8 total).
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

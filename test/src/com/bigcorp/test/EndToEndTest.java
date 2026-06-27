@@ -17,6 +17,9 @@ import com.bigcorp.common.rules.impl.MaxOrderValueRule;
 import com.bigcorp.common.rules.impl.RestrictedSymbolRule;
 import com.bigcorp.common.rules.impl.ShortSaleRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
+import com.bigcorp.common.rules.impl.DailyVolumeLimitRule;
+import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
+import com.bigcorp.common.rules.impl.KYCStatusRule;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.audit.consumer.AuditListener;
@@ -136,6 +139,9 @@ public class EndToEndTest {
             // Phase 12: Derivatives Engine (contractor module)
             phase12_derivativesEngine();
 
+            // Phase 13: Compliance Rules (post-2005 regulatory incident)
+            phase13_complianceRules();
+
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
             e.printStackTrace();
@@ -171,7 +177,7 @@ public class EndToEndTest {
             Statement stmt = conn.createStatement();
             String[] tables = {"CLIENTS", "TRADE_ORDERS", "NOTIFICATIONS", 
                                "SETTLEMENT_RECORDS", "AUDIT_LOG", "PRICING_CACHE",
-                               "BILLING_LEDGER"};
+                               "BILLING_LEDGER", "DAILY_VOLUME_TRACKER"};
             boolean allExist = true;
             for (int i = 0; i < tables.length; i++) {
                 try {
@@ -185,7 +191,7 @@ public class EndToEndTest {
             }
             ConnectionHelper.closeQuietly(stmt);
             ConnectionHelper.closeQuietly(conn);
-            assertTest("T1.2", "All 7 tables exist", allExist);
+            assertTest("T1.2", "All 8 tables exist", allExist);
         } catch (Exception e) {
             assertTest("T1.2", "All 6 tables exist", false, e.getMessage());
         }
@@ -1521,6 +1527,178 @@ public class EndToEndTest {
                 "EUR=" + eurRate + " GBP=" + gbpRate + " JPY=" + jpyRate + " XYZ=" + unknownRate);
         } catch (Exception e) {
             assertTest("T12.3", "[DERIV] FxPricingHelper rates", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 13: Compliance Rules (post-2005 regulatory incident)
+    // ========================================================================
+
+    private static void phase13_complianceRules() {
+        System.out.println("=== Phase 13: Compliance Rules (REG-2005) ===");
+        System.out.println();
+
+        // T13.1 - DailyVolumeLimitRule passes for normal-sized order (< 50,000 shares)
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(1000);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            DailyVolumeLimitRule rule = new DailyVolumeLimitRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.1", "DailyVolumeLimitRule passes for 1000 shares (< 50,000 limit)",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T13.1", "DailyVolumeLimitRule normal order", false, e.getMessage());
+        }
+
+        // T13.2 - DailyVolumeLimitRule rejects oversized order (> 50,000 shares)
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-002");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(60000);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            DailyVolumeLimitRule rule = new DailyVolumeLimitRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.2", "DailyVolumeLimitRule rejects 60,000 shares (> 50,000 limit)",
+                !result && ctx.isRejected()
+                    && ctx.getRejectionReason() != null
+                    && ctx.getRejectionReason().contains("REG-2005-001"),
+                "passed=" + result + " reason=" + ctx.getRejectionReason());
+        } catch (Exception e) {
+            assertTest("T13.2", "DailyVolumeLimitRule oversized order", false, e.getMessage());
+        }
+
+        // T13.3 - KYCStatusRule passes for approved client
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-003");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            KYCStatusRule rule = new KYCStatusRule();
+            boolean result = rule.evaluate(ctx);
+
+            // Client C001 should have KYC_STATUS='APPROVED' (default)
+            Object kycStatus = ctx.getAttribute("kyc_status");
+            assertTest("T13.3", "KYCStatusRule passes for client C001 (KYC_STATUS=APPROVED)",
+                result && !ctx.isRejected(),
+                "passed=" + result + " kyc_status=" + kycStatus);
+        } catch (Exception e) {
+            assertTest("T13.3", "KYCStatusRule approved client", false, e.getMessage());
+        }
+
+        // T13.4 - WashTradeDetectionRule passes when no wash trade pattern exists
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-004");
+            order.setClientId("C001");
+            order.setSymbol("INTC");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(30.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            WashTradeDetectionRule rule = new WashTradeDetectionRule();
+            boolean result = rule.evaluate(ctx);
+
+            assertTest("T13.4", "WashTradeDetectionRule passes (no opposite-side order for C001/INTC)",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T13.4", "WashTradeDetectionRule no wash trade", false, e.getMessage());
+        }
+
+        // T13.5 - Verify compliance context attributes are set
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("COMPL-005");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(500);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Run all three compliance rules in order
+            DailyVolumeLimitRule volumeRule = new DailyVolumeLimitRule();
+            volumeRule.evaluate(ctx);
+
+            WashTradeDetectionRule washRule = new WashTradeDetectionRule();
+            washRule.evaluate(ctx);
+
+            KYCStatusRule kycRule = new KYCStatusRule();
+            kycRule.evaluate(ctx);
+
+            // Check all compliance context attributes
+            Object dailyVolumeChecked = ctx.getAttribute("daily_volume_checked");
+            Object complianceFlags = ctx.getAttribute("compliance_flags");
+            Object washTradeChecked = ctx.getAttribute("wash_trade_checked");
+            Object kycStatus = ctx.getAttribute("kyc_status");
+
+            boolean allSet = Boolean.TRUE.equals(dailyVolumeChecked)
+                && "VOLUME_CHECKED".equals(complianceFlags)
+                && Boolean.TRUE.equals(washTradeChecked)
+                && kycStatus != null;
+
+            assertTest("T13.5", "Compliance context attributes set (daily_volume_checked, compliance_flags, wash_trade_checked, kyc_status)",
+                allSet,
+                "daily_volume_checked=" + dailyVolumeChecked
+                    + " compliance_flags=" + complianceFlags
+                    + " wash_trade_checked=" + washTradeChecked
+                    + " kyc_status=" + kycStatus);
+        } catch (Exception e) {
+            assertTest("T13.5", "Compliance context attributes", false, e.getMessage());
         }
 
         System.out.println();

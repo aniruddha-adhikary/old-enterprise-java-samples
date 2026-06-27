@@ -55,3 +55,19 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Minimal integration with common-lib (ConnectionHelper only)
 
 ---
+
+## 2005 Q2 — Regulatory limits after incident — engineer: compliance-bolt-on
+
+**Wave 4**
+
+- Added DailyVolumeLimitRule (priority 110): per-order 50k share limit (REG-2005-001)
+- Added WashTradeDetectionRule (priority 105): checks for same-client opposite-side patterns (REG-2005-002)
+- Added KYCStatusRule (priority 115): verifies client KYC status before trading
+- Added DAILY_VOLUME_TRACKER table and KYC_STATUS column to CLIENTS
+- Added redundant manual volume check in OrderMessageListener (belt-and-suspenders, REG-2005-003)
+- New context attributes: compliance_flags, wash_trade_checked, kyc_status, daily_volume_checked
+- Known issue / JIRA-5200: T2.3 intermittently fails (race condition — compliance DB queries add latency)
+- Known issue / JIRA-5201: T10.4 fails (compliance rules reject test order missing clientId on TradeOrder)
+- Known issue / JIRA-4102: T10.2 count now 8 (was 5, was 4)
+
+---
