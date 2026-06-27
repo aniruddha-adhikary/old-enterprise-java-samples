@@ -87,5 +87,31 @@ public class SpecialClientsRule implements Rule {
             context.setAttribute("pricing_tier_override", Client.TIER_PLATINUM);
             context.addMessage("Velocity Trading: PLATINUM pricing override applied");
         }
+
+        // ======== Wave 9 additions (2014) — more special clients ========
+        // TODO: move all of these to database config (JIRA-7200)
+        // TODO: this class is getting way too long (JIRA-7201)
+
+        // C008 — Falcon Trading Group: negotiated 75% commission discount
+        // per email from Sales Director, 2014-01-15
+        if ("C008".equals(clientId)) {
+            context.setAttribute("commission_override", Double.valueOf(0.005));
+            context.addMessage("Falcon Trading: 75% commission discount (sales deal 2014)");
+        }
+
+        // C009 — Apex Capital: gets GOLD pricing even on SILVER tier
+        // copy-pasted from C004 logic above because "same deal structure"
+        if ("C009".equals(clientId)) {
+            context.setAttribute("pricing_tier_override", Client.TIER_GOLD);
+            context.addMessage("Apex Capital: GOLD pricing override (JIRA-7202)");
+        }
+
+        // C010 — Sterling Investments: no commission + multi-currency priority
+        // added same day as multi-currency feature went live
+        if ("C010".equals(clientId)) {
+            context.setAttribute("commission_override", Double.valueOf(0.0));
+            context.setAttribute("multi_currency_priority", Boolean.TRUE);
+            context.addMessage("Sterling Investments: zero commission + FX priority");
+        }
     }
 }

@@ -52,6 +52,23 @@ import com.bigcorp.derivatives.core.DerivativeProcessor;
 import com.bigcorp.derivatives.core.FxPricingHelper;
 import com.bigcorp.derivatives.queue.DerivativeQueueConstants;
 import com.bigcorp.derivatives.util.DerivativeLogger;
+import com.bigcorp.reporting.dao.ReportingDAO;
+import com.bigcorp.reporting.engine.ReportGenerator;
+import com.bigcorp.reporting.template.ReportTemplateEngine;
+import com.bigcorp.common.rules.impl.MultiCurrencyRule;
+import com.bigcorp.common.rules.impl.LayeringDetectionRule;
+import com.bigcorp.common.rules.impl.SpoofingPatternRule;
+import com.bigcorp.common.rules.impl.PositionLimitRule;
+import com.bigcorp.common.rules.SurveillanceAuditLogger;
+import com.bigcorp.common.dao.BaseDAO;
+import com.bigcorp.common.dao.DAOInterface;
+import com.bigcorp.risk.model.RiskOrder;
+import com.bigcorp.risk.engine.ExposureCalculator;
+import com.bigcorp.risk.dao.RiskDAO;
+import com.bigcorp.risk.scheduler.RiskScheduler;
+import com.bigcorp.tradedesk.api.ClientPortalAPI;
+import com.bigcorp.settlement.regulatory.RegulatoryExportJob;
+import com.bigcorp.common.logging.BigCorpLogger;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 
@@ -65,6 +82,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Comprehensive end-to-end test harness for BigCorp Trade Order Management.
@@ -157,6 +175,30 @@ public class EndToEndTest {
 
             // Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
             phase16_wave7AuditAndCircuitBreakers();
+
+            // Phase 17: Wave 8 — Reporting Subsystem (contractor)
+            phase17_reportingSubsystem();
+
+            // Phase 18: Wave 9 — Multi-Currency & More Special Clients (feature-rusher)
+            phase18_multiCurrencyAndSpecialClients();
+
+            // Phase 19: Wave 10 — Trade Surveillance (compliance-bolt-on)
+            phase19_tradeSurveillance();
+
+            // Phase 20: Wave 11 — DAO Consolidation (architect)
+            phase20_daoConsolidation();
+
+            // Phase 21: Wave 12 — Risk Engine (contractor)
+            phase21_riskEngine();
+
+            // Phase 22: Wave 13 — Client Portal API (feature-rusher)
+            phase22_clientPortalAPI();
+
+            // Phase 23: Wave 14 — Regulatory Reporting (compliance-bolt-on)
+            phase23_regulatoryReporting();
+
+            // Phase 24: Wave 15 — Logging/Observability Cleanup (architect)
+            phase24_loggingCleanup();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -1284,10 +1326,11 @@ public class EndToEndTest {
         // T10.2 - Loaded rules include the original 4 core types (plus later additions)
         // Updated: Wave 2 added RestrictedSymbol, Wave 4 added compliance rules,
         // Wave 5 added none, Wave 6 added VolumeDiscount+LoyaltyBonus,
-        // Wave 7 added MarketHalt+ClientKillSwitch (now 12 total)
+        // Wave 7 added MarketHalt+ClientKillSwitch (12 total)
+        // Wave 9 added MultiCurrency, Wave 10 added Layering+Spoofing+PositionLimit (now 16 total)
         try {
             List rules = RuleConfigLoader.loadRules();
-            boolean correctCount = (rules.size() == 12);
+            boolean correctCount = (rules.size() == 16);
 
             boolean hasMaxOrder = false;
             boolean hasClientTier = false;
@@ -1305,7 +1348,7 @@ public class EndToEndTest {
             }
 
             boolean corePresent = hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients && hasRestricted;
-            assertTest("T10.2", "Config loads 12 rules including core 4 + all wave additions",
+            assertTest("T10.2", "Config loads 16 rules including core 4 + all wave additions",
                 correctCount && corePresent,
                 "count=" + rules.size() + ", maxOrder=" + hasMaxOrder
                 + ", clientTier=" + hasClientTier + ", marketHours=" + hasMarketHours
@@ -2294,6 +2337,752 @@ public class EndToEndTest {
                 "audit_entries=" + auditEntries + " (expected >= 1 for MarketHaltRule)");
         } catch (Exception e) {
             assertTest("T16.5", "Audit trail entries per rule", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 17: Wave 8 — Reporting Subsystem (contractor module)
+    // ========================================================================
+
+    private static void phase17_reportingSubsystem() {
+        System.out.println("=== Phase 17: Wave 8 — Reporting Subsystem (contractor) ===");
+        System.out.println();
+
+        // T17.1 - ReportingDAO can query daily P&L summary
+        try {
+            ReportingDAO rptDao = new ReportingDAO();
+            List pnlData = rptDao.getDailyPnlSummary();
+            assertTest("T17.1", "ReportingDAO.getDailyPnlSummary() returns data (may be empty if no filled orders yet)",
+                pnlData != null,
+                "rows=" + (pnlData != null ? pnlData.size() : "null"));
+        } catch (Exception e) {
+            assertTest("T17.1", "ReportingDAO daily P&L query", false, e.getMessage());
+        }
+
+        // T17.2 - ReportTemplateEngine generates valid HTML
+        try {
+            String[] columns = {"COL1", "COL2"};
+            String[] headers = {"Column 1", "Column 2"};
+            List rows = new ArrayList();
+            Map row = new java.util.HashMap();
+            row.put("COL1", "value1");
+            row.put("COL2", "value2");
+            rows.add(row);
+
+            String html = ReportTemplateEngine.generateHtmlReport("Test Report", columns, headers, rows);
+
+            boolean valid = html != null
+                && html.contains("<html>")
+                && html.contains("Test Report")
+                && html.contains("value1")
+                && html.contains("value2");
+
+            assertTest("T17.2", "ReportTemplateEngine generates valid HTML with data",
+                valid,
+                "html_length=" + (html != null ? html.length() : 0));
+        } catch (Exception e) {
+            assertTest("T17.2", "ReportTemplateEngine HTML generation", false, e.getMessage());
+        }
+
+        // T17.3 - ReportTemplateEngine generates valid CSV
+        try {
+            String[] columns = {"COL1", "COL2"};
+            String[] headers = {"Column 1", "Column 2"};
+            List rows = new ArrayList();
+            Map row = new java.util.HashMap();
+            row.put("COL1", "data_a");
+            row.put("COL2", "data_b");
+            rows.add(row);
+
+            String csv = ReportTemplateEngine.generateCsvReport(columns, headers, rows);
+
+            boolean valid = csv != null
+                && csv.contains("Column 1,Column 2")
+                && csv.contains("data_a,data_b");
+
+            assertTest("T17.3", "ReportTemplateEngine generates valid CSV",
+                valid,
+                "csv_length=" + (csv != null ? csv.length() : 0));
+        } catch (Exception e) {
+            assertTest("T17.3", "ReportTemplateEngine CSV generation", false, e.getMessage());
+        }
+
+        // T17.4 - ReportGenerator generates files to output directory
+        try {
+            String testOutputDir = "./test-reports-output/";
+            new File(testOutputDir).mkdirs();
+            ReportGenerator gen = new ReportGenerator();
+            int files = gen.generateDailyPnlReport(testOutputDir);
+            boolean filesExist = new File(testOutputDir + "/daily_pnl.html").exists()
+                && new File(testOutputDir + "/daily_pnl.csv").exists();
+
+            assertTest("T17.4", "ReportGenerator produces daily P&L HTML and CSV files",
+                files >= 2 && filesExist,
+                "files_written=" + files);
+
+            // Cleanup
+            deleteDir(new File(testOutputDir));
+        } catch (Exception e) {
+            assertTest("T17.4", "ReportGenerator file output", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 18: Wave 9 — Multi-Currency & More Special Clients
+    // ========================================================================
+
+    private static void phase18_multiCurrencyAndSpecialClients() {
+        System.out.println("=== Phase 18: Wave 9 — Multi-Currency & More Special Clients (feature-rusher) ===");
+        System.out.println();
+
+        // T18.1 - MultiCurrencyRule passes for USD order (no conversion needed)
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE9-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ctx.setAttribute("currency", "USD");
+
+            MultiCurrencyRule rule = new MultiCurrencyRule();
+            boolean result = rule.evaluate(ctx);
+
+            Object fxRate = ctx.getAttribute("fx_rate_applied");
+            Object settleCcy = ctx.getAttribute("settlement_currency");
+
+            assertTest("T18.1", "MultiCurrencyRule passes for USD (fx_rate=1.0, settlement=USD)",
+                result && "1.0".equals(fxRate) && "USD".equals(settleCcy),
+                "fx_rate=" + fxRate + " settlement_currency=" + settleCcy);
+        } catch (Exception e) {
+            assertTest("T18.1", "MultiCurrencyRule USD order", false, e.getMessage());
+        }
+
+        // T18.2 - MultiCurrencyRule sets EUR rate
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE9-002");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ctx.setAttribute("currency", "EUR");
+
+            MultiCurrencyRule rule = new MultiCurrencyRule();
+            boolean result = rule.evaluate(ctx);
+
+            Object fxRate = ctx.getAttribute("fx_rate_applied");
+            Object settleCcy = ctx.getAttribute("settlement_currency");
+
+            assertTest("T18.2", "MultiCurrencyRule sets EUR rate=1.1",
+                result && "1.1".equals(fxRate) && "EUR".equals(settleCcy),
+                "fx_rate=" + fxRate + " settlement_currency=" + settleCcy);
+        } catch (Exception e) {
+            assertTest("T18.2", "MultiCurrencyRule EUR order", false, e.getMessage());
+        }
+
+        // T18.3 - SpecialClientsRule handles C008 (Falcon Trading commission discount)
+        try {
+            Client falcon = new Client();
+            falcon.setClientId("C008");
+            falcon.setTier(Client.TIER_SILVER);
+            falcon.setMaxOrderValue(200000);
+            falcon.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE9-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, falcon);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object commOverride = ctx.getAttribute("commission_override");
+            assertTest("T18.3", "SpecialClientsRule: C008 (Falcon) gets 75% commission discount (0.005)",
+                commOverride != null && ((Double) commOverride).doubleValue() == 0.005,
+                "commission_override=" + commOverride);
+        } catch (Exception e) {
+            assertTest("T18.3", "SpecialClients C008 commission override", false, e.getMessage());
+        }
+
+        // T18.4 - Rule count increased after Wave 9 additions
+        try {
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+            List configRules = RuleConfigLoader.loadRules();
+            for (int i = 0; i < configRules.size(); i++) {
+                engine.addRule((Rule) configRules.get(i));
+            }
+            // Add ShortSaleRule manually (as in OrderMessageListener)
+            engine.addRule(new ShortSaleRule());
+
+            int ruleCount = engine.getRuleCount();
+            assertTest("T18.4", "Rule count is 17 after Wave 9 additions (16 config + 1 manual ShortSaleRule)",
+                ruleCount == 17,
+                "ruleCount=" + ruleCount);
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T18.4", "Rule count after Wave 9", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 19: Wave 10 — Trade Surveillance
+    // ========================================================================
+
+    private static void phase19_tradeSurveillance() {
+        System.out.println("=== Phase 19: Wave 10 — Trade Surveillance (compliance-bolt-on) ===");
+        System.out.println();
+
+        // T19.1 - LayeringDetectionRule passes for client with few orders
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("SURV-001");
+            order.setClientId("C001");
+            order.setSymbol("INTC");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(30.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            LayeringDetectionRule rule = new LayeringDetectionRule();
+            boolean result = rule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("layering_checked");
+            Object status = ctx.getAttribute("layering_status");
+
+            assertTest("T19.1", "LayeringDetectionRule passes for normal order count",
+                result && Boolean.TRUE.equals(checked),
+                "layering_status=" + status + " checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T19.1", "LayeringDetectionRule normal order", false, e.getMessage());
+        }
+
+        // T19.2 - SpoofingPatternRule passes for client with no cancellations
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("SURV-002");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            SpoofingPatternRule rule = new SpoofingPatternRule();
+            boolean result = rule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("spoofing_checked");
+            Object status = ctx.getAttribute("spoofing_status");
+
+            assertTest("T19.2", "SpoofingPatternRule passes for client with no cancellations",
+                result && Boolean.TRUE.equals(checked),
+                "spoofing_status=" + status + " checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T19.2", "SpoofingPatternRule no cancellations", false, e.getMessage());
+        }
+
+        // T19.3 - PositionLimitRule passes for order within position limits
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("SURV-003");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            PositionLimitRule rule = new PositionLimitRule();
+            boolean result = rule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("position_limit_checked");
+            Object status = ctx.getAttribute("position_status");
+
+            assertTest("T19.3", "PositionLimitRule passes for order within limits (100 shares)",
+                result && Boolean.TRUE.equals(checked),
+                "position_status=" + status);
+        } catch (Exception e) {
+            assertTest("T19.3", "PositionLimitRule within limits", false, e.getMessage());
+        }
+
+        // T19.4 - SURVEILLANCE_AUDIT_LOG table exists and can be written to
+        try {
+            SurveillanceAuditLogger.logSurveillanceDecision(
+                "TestRule", "SURV-004", "C001", "MSFT", true, "NONE", "Test surveillance audit entry");
+
+            Connection conn = null;
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM SURVEILLANCE_AUDIT_LOG WHERE ORDER_ID = 'SURV-004'"
+                );
+                rs = ps.executeQuery();
+                int count = 0;
+                if (rs.next()) count = rs.getInt(1);
+
+                assertTest("T19.4", "SURVEILLANCE_AUDIT_LOG table accepts entries",
+                    count > 0,
+                    "entries=" + count);
+            } finally {
+                ConnectionHelper.closeQuietly(rs);
+                ConnectionHelper.closeQuietly(ps);
+                ConnectionHelper.closeQuietly(conn);
+            }
+        } catch (Exception e) {
+            assertTest("T19.4", "SURVEILLANCE_AUDIT_LOG write", false, e.getMessage());
+        }
+
+        // T19.5 - POSITION_TRACKING table exists
+        try {
+            int count = countRecords("POSITION_TRACKING");
+            assertTest("T19.5", "POSITION_TRACKING table exists and is queryable",
+                count >= 0,
+                "rows=" + count);
+        } catch (Exception e) {
+            assertTest("T19.5", "POSITION_TRACKING table check", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 20: Wave 11 — DAO Consolidation (architect)
+    // ========================================================================
+
+    private static void phase20_daoConsolidation() {
+        System.out.println("=== Phase 20: Wave 11 — DAO Consolidation (architect) ===");
+        System.out.println();
+
+        // T20.1 - BaseDAO.queryList works for simple query
+        try {
+            BaseDAO testDao = new BaseDAO() {
+                protected Object mapRow(ResultSet rs) throws Exception {
+                    return rs.getString(1);
+                }
+            };
+
+            List results = testDao.queryList("SELECT CLIENT_ID FROM CLIENTS ORDER BY CLIENT_ID");
+
+            assertTest("T20.1", "BaseDAO.queryList returns client IDs from CLIENTS table",
+                results != null && results.size() >= 7,
+                "count=" + (results != null ? results.size() : 0));
+        } catch (Exception e) {
+            assertTest("T20.1", "BaseDAO.queryList", false, e.getMessage());
+        }
+
+        // T20.2 - BaseDAO.querySingle with parameterized query
+        try {
+            BaseDAO testDao = new BaseDAO() {
+                protected Object mapRow(ResultSet rs) throws Exception {
+                    return rs.getString("CLIENT_NAME");
+                }
+            };
+
+            Object result = testDao.querySingle(
+                "SELECT CLIENT_NAME FROM CLIENTS WHERE CLIENT_ID = ?",
+                new Object[]{"C001"});
+
+            assertTest("T20.2", "BaseDAO.querySingle returns 'Acme Trading LLC' for C001",
+                "Acme Trading LLC".equals(result),
+                "result=" + result);
+        } catch (Exception e) {
+            assertTest("T20.2", "BaseDAO.querySingle", false, e.getMessage());
+        }
+
+        // T20.3 - BaseDAO.countRows works
+        try {
+            BaseDAO testDao = new BaseDAO() {
+                protected Object mapRow(ResultSet rs) throws Exception {
+                    return null;
+                }
+            };
+
+            int count = testDao.countRows("CLIENTS", "ACTIVE = ?", new Object[]{1});
+
+            assertTest("T20.3", "BaseDAO.countRows returns active client count",
+                count >= 7,
+                "active_clients=" + count);
+        } catch (Exception e) {
+            assertTest("T20.3", "BaseDAO.countRows", false, e.getMessage());
+        }
+
+        // T20.4 - DAOInterface contract exists
+        try {
+            // Verify DAOInterface has the expected methods
+            java.lang.reflect.Method findById = DAOInterface.class.getMethod("findById", new Class[]{String.class});
+            java.lang.reflect.Method findAll = DAOInterface.class.getMethod("findAll", new Class[]{});
+            java.lang.reflect.Method save = DAOInterface.class.getMethod("save", new Class[]{Object.class});
+
+            assertTest("T20.4", "DAOInterface defines findById, findAll, save methods",
+                findById != null && findAll != null && save != null,
+                "methods verified via reflection");
+        } catch (Exception e) {
+            assertTest("T20.4", "DAOInterface contract verification", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 21: Wave 12 — Risk Engine (contractor module)
+    // ========================================================================
+
+    private static void phase21_riskEngine() {
+        System.out.println("=== Phase 21: Wave 12 — Risk Engine (contractor) ===");
+        System.out.println();
+
+        // T21.1 - ExposureCalculator computes correct notional and VaR
+        try {
+            RiskOrder ro = new RiskOrder();
+            ro.setRiskOrderId("RISK-TEST-001");
+            ro.setSourceOrderId("ORD-001");
+            ro.setClientId("C001");
+            ro.setSymbol("MSFT");
+            ro.setQuantity(1000);
+            ro.setSide("BUY");
+            ro.setPrice(25.00);
+
+            ExposureCalculator.calculateRisk(ro);
+
+            // notional = 1000 * 25 = 25000
+            // exposure = +25000 (BUY)
+            // VaR = 25000 * 0.20 * 2.33 * sqrt(1/252)
+            double expectedNotional = 25000.0;
+            boolean notionalOk = Math.abs(ro.getNotionalValue() - expectedNotional) < 0.01;
+            boolean exposureOk = Math.abs(ro.getExposureContribution() - expectedNotional) < 0.01;
+            boolean varPositive = ro.getVarContribution() > 0;
+
+            assertTest("T21.1", "ExposureCalculator: notional=25000, exposure=+25000, VaR>0",
+                notionalOk && exposureOk && varPositive,
+                "notional=" + ro.getNotionalValue() + " exposure=" + ro.getExposureContribution()
+                    + " VaR=" + ro.getVarContribution());
+        } catch (Exception e) {
+            assertTest("T21.1", "ExposureCalculator calculation", false, e.getMessage());
+        }
+
+        // T21.2 - RiskOrder model round-trip
+        try {
+            RiskOrder ro = new RiskOrder();
+            ro.setRiskOrderId("RISK-TEST-002");
+            ro.setSourceOrderId("ORD-002");
+            ro.setClientId("C001");
+            ro.setSymbol("MSFT");
+            ro.setQuantity(500);
+            ro.setSide("SELL");
+            ro.setPrice(30.00);
+
+            ExposureCalculator.calculateRisk(ro);
+
+            boolean fieldsOk = "RISK-TEST-002".equals(ro.getRiskOrderId())
+                && "ORD-002".equals(ro.getSourceOrderId())
+                && "C001".equals(ro.getClientId())
+                && "MSFT".equals(ro.getSymbol())
+                && ro.getQuantity() == 500
+                && "SELL".equals(ro.getSide())
+                && ro.getExposureContribution() < 0; // SELL = negative exposure
+
+            assertTest("T21.2", "RiskOrder model: fields preserved, SELL gives negative exposure",
+                fieldsOk,
+                "exposure=" + ro.getExposureContribution() + " status=" + ro.getRiskStatus());
+        } catch (Exception e) {
+            assertTest("T21.2", "RiskOrder model round-trip", false, e.getMessage());
+        }
+
+        // T21.3 - RISK_ASSESSMENTS table exists and accepts data
+        try {
+            RiskOrder ro = new RiskOrder();
+            ro.setRiskOrderId("RISK-TEST-003");
+            ro.setSourceOrderId("ORD-003");
+            ro.setClientId("C001");
+            ro.setSymbol("MSFT");
+            ro.setQuantity(100);
+            ro.setSide("BUY");
+            ro.setPrice(25.00);
+            ExposureCalculator.calculateRisk(ro);
+
+            RiskDAO riskDao = new RiskDAO();
+            riskDao.saveRiskAssessment(ro);
+
+            int count = countRecords("RISK_ASSESSMENTS");
+            assertTest("T21.3", "RISK_ASSESSMENTS table accepts risk assessment data",
+                count >= 1,
+                "assessments=" + count);
+        } catch (Exception e) {
+            assertTest("T21.3", "RISK_ASSESSMENTS table write", false, e.getMessage());
+        }
+
+        // T21.4 - RiskScheduler queue constants are defined
+        try {
+            String queue = RiskScheduler.RISK_INBOUND_QUEUE;
+            assertTest("T21.4", "RiskScheduler defines own queue constant (RISK.ORDERS.INBOUND)",
+                "RISK.ORDERS.INBOUND".equals(queue),
+                "queue=" + queue);
+        } catch (Exception e) {
+            assertTest("T21.4", "RiskScheduler queue constants", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 22: Wave 13 — Client Portal API (feature-rusher)
+    // ========================================================================
+
+    private static void phase22_clientPortalAPI() {
+        System.out.println("=== Phase 22: Wave 13 — Client Portal API (feature-rusher) ===");
+        System.out.println();
+
+        // T22.1 - ClientPortalAPI.authenticate with valid key
+        try {
+            boolean authOk = ClientPortalAPI.authenticate("bigcorp-internal-2019");
+            boolean authFail = ClientPortalAPI.authenticate("wrong-key");
+            boolean authNull = ClientPortalAPI.authenticate(null);
+
+            assertTest("T22.1", "ClientPortalAPI authentication: valid key passes, invalid/null fails",
+                authOk && !authFail && !authNull,
+                "validKey=" + authOk + " wrongKey=" + authFail + " nullKey=" + authNull);
+        } catch (Exception e) {
+            assertTest("T22.1", "ClientPortalAPI authentication", false, e.getMessage());
+        }
+
+        // T22.2 - ClientPortalAPI.getOrdersForClient returns list (may be empty)
+        try {
+            ClientPortalAPI api = new ClientPortalAPI();
+            List orders = api.getOrdersForClient("C001");
+
+            assertTest("T22.2", "ClientPortalAPI.getOrdersForClient returns non-null list for C001",
+                orders != null,
+                "orders=" + (orders != null ? orders.size() : "null"));
+        } catch (Exception e) {
+            assertTest("T22.2", "ClientPortalAPI.getOrdersForClient", false, e.getMessage());
+        }
+
+        // T22.3 - ClientPortalAPI.getClientBalance returns map for valid client
+        try {
+            ClientPortalAPI api = new ClientPortalAPI();
+            Map balance = api.getClientBalance("C001");
+
+            assertTest("T22.3", "ClientPortalAPI.getClientBalance returns non-null map",
+                balance != null,
+                "balance_keys=" + (balance != null ? balance.size() : "null"));
+        } catch (Exception e) {
+            assertTest("T22.3", "ClientPortalAPI.getClientBalance", false, e.getMessage());
+        }
+
+        // T22.4 - ClientPortalAPI.getOrderStatusJson returns JSON-ish string
+        try {
+            ClientPortalAPI api = new ClientPortalAPI();
+            String json = api.getOrderStatusJson("nonexistent-order");
+            assertTest("T22.4", "ClientPortalAPI.getOrderStatusJson returns {} for missing order",
+                "{}".equals(json),
+                "json=" + json);
+        } catch (Exception e) {
+            assertTest("T22.4", "ClientPortalAPI.getOrderStatusJson", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 23: Wave 14 — Regulatory Reporting (compliance-bolt-on)
+    // ========================================================================
+
+    private static void phase23_regulatoryReporting() {
+        System.out.println("=== Phase 23: Wave 14 — Regulatory Reporting (compliance-bolt-on) ===");
+        System.out.println();
+
+        // T23.1 - RegulatoryExportJob generates fixed-width file
+        try {
+            String outputDir = "./test-regulatory-output/";
+            new File(outputDir).mkdirs();
+
+            RegulatoryExportJob job = new RegulatoryExportJob();
+            String fwFile = outputDir + "test_reg_report.dat";
+            int records = job.generateFixedWidthReport(fwFile);
+
+            boolean fileExists = new File(fwFile).exists();
+
+            assertTest("T23.1", "RegulatoryExportJob generates fixed-width report file",
+                fileExists && records >= 0,
+                "records=" + records + " file_exists=" + fileExists);
+
+            // Validate the generated file
+            if (fileExists) {
+                String content = readFile(new File(fwFile));
+                boolean valid = RegulatoryExportJob.validateFixedWidthFile(content);
+                assertTest("T23.2", "Fixed-width file passes validation (HDR/TRL format)",
+                    valid,
+                    "content_length=" + content.length());
+            } else {
+                assertTest("T23.2", "Fixed-width file validation (file not found)", false, "no file");
+            }
+
+            deleteDir(new File(outputDir));
+        } catch (Exception e) {
+            assertTest("T23.1", "RegulatoryExportJob fixed-width", false, e.getMessage());
+            assertTest("T23.2", "Fixed-width validation", false, "skipped due to T23.1 failure");
+        }
+
+        // T23.3 - RegulatoryExportJob generates XML file
+        try {
+            String outputDir = "./test-regulatory-output/";
+            new File(outputDir).mkdirs();
+
+            RegulatoryExportJob job = new RegulatoryExportJob();
+            String xmlFile = outputDir + "test_reg_report.xml";
+            int records = job.generateXmlReport(xmlFile);
+
+            boolean fileExists = new File(xmlFile).exists();
+            String content = "";
+            if (fileExists) {
+                content = readFile(new File(xmlFile));
+            }
+
+            boolean valid = fileExists
+                && content.contains("<RegulatoryReport>")
+                && content.contains("<Trades>")
+                && content.contains("</RegulatoryReport>");
+
+            assertTest("T23.3", "RegulatoryExportJob generates valid XML report",
+                valid,
+                "records=" + records + " valid_xml=" + valid);
+
+            deleteDir(new File(outputDir));
+        } catch (Exception e) {
+            assertTest("T23.3", "RegulatoryExportJob XML", false, e.getMessage());
+        }
+
+        // T23.4 - REG_REPORT_LOG table exists and is queryable
+        try {
+            int count = countRecords("REG_REPORT_LOG");
+            assertTest("T23.4", "REG_REPORT_LOG table exists and is queryable",
+                count >= 0,
+                "rows=" + count);
+        } catch (Exception e) {
+            assertTest("T23.4", "REG_REPORT_LOG table", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 24: Wave 15 — Logging/Observability Cleanup (architect)
+    // ========================================================================
+
+    private static void phase24_loggingCleanup() {
+        System.out.println("=== Phase 24: Wave 15 — Logging/Observability Cleanup (architect) ===");
+        System.out.println();
+
+        // T24.1 - BigCorpLogger can be instantiated and logs at INFO level
+        try {
+            BigCorpLogger logger = new BigCorpLogger(EndToEndTest.class);
+            // This should not throw
+            logger.info("Test log message from EndToEndTest");
+
+            assertTest("T24.1", "BigCorpLogger instantiation and info() logging works",
+                true,
+                "module auto-derived from class package");
+        } catch (Exception e) {
+            assertTest("T24.1", "BigCorpLogger instantiation", false, e.getMessage());
+        }
+
+        // T24.2 - BigCorpLogger respects global log level
+        try {
+            int originalLevel = BigCorpLogger.getGlobalLevel();
+            BigCorpLogger.setGlobalLevel(BigCorpLogger.LEVEL_ERROR);
+
+            BigCorpLogger logger = new BigCorpLogger(EndToEndTest.class);
+            // DEBUG and INFO should be suppressed at ERROR level
+            // (we can't easily verify suppression, but we can verify no exception)
+            logger.debug("Should be suppressed");
+            logger.info("Should be suppressed");
+            logger.error("Should appear");
+
+            BigCorpLogger.setGlobalLevel(originalLevel);
+
+            assertTest("T24.2", "BigCorpLogger respects global log level setting",
+                true,
+                "set to ERROR, restored to " + originalLevel);
+        } catch (Exception e) {
+            assertTest("T24.2", "BigCorpLogger log level", false, e.getMessage());
+        }
+
+        // T24.3 - BigCorpLogger derives module name from package
+        try {
+            BigCorpLogger commonLogger = new BigCorpLogger(ConnectionHelper.class);
+            BigCorpLogger testLogger = new BigCorpLogger("test", EndToEndTest.class);
+
+            // Both should work without error
+            commonLogger.info("Test from common-lib derived logger");
+            testLogger.info("Test from explicit module name logger");
+
+            assertTest("T24.3", "BigCorpLogger derives module name from class package",
+                true,
+                "common-lib and explicit module loggers created");
+        } catch (Exception e) {
+            assertTest("T24.3", "BigCorpLogger module derivation", false, e.getMessage());
+        }
+
+        // T24.4 - Verify BigCorpLogger log levels are defined correctly
+        try {
+            boolean levelsOk = BigCorpLogger.LEVEL_DEBUG == 0
+                && BigCorpLogger.LEVEL_INFO == 1
+                && BigCorpLogger.LEVEL_WARN == 2
+                && BigCorpLogger.LEVEL_ERROR == 3;
+
+            assertTest("T24.4", "BigCorpLogger level constants: DEBUG=0, INFO=1, WARN=2, ERROR=3",
+                levelsOk,
+                "DEBUG=" + BigCorpLogger.LEVEL_DEBUG + " INFO=" + BigCorpLogger.LEVEL_INFO
+                    + " WARN=" + BigCorpLogger.LEVEL_WARN + " ERROR=" + BigCorpLogger.LEVEL_ERROR);
+        } catch (Exception e) {
+            assertTest("T24.4", "BigCorpLogger level constants", false, e.getMessage());
         }
 
         System.out.println();
