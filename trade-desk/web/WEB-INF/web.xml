@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE web-app PUBLIC
+  "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+  "http://java.sun.com/dtd/web-app_2_3.dtd">
+
+<!--
+  BigCorp Trade Desk Web Application
+  Deployment Descriptor
+  
+  Author: Bob
+  Last updated: 2002-03-15
+  
+  NOTE: Do not change servlet mappings without updating
+  the links in index.jsp and the servlets themselves.
+  Also update the load testing scripts if you change URLs.
+-->
+<web-app>
+
+    <display-name>BigCorp Trade Desk</display-name>
+    <description>
+        Trade order entry and status tracking for the BigCorp
+        Trading Desk. Part of the BigCorp Trade Order Management System.
+    </description>
+
+    <!-- Order Entry Servlet -->
+    <servlet>
+        <servlet-name>OrderEntryServlet</servlet-name>
+        <servlet-class>com.bigcorp.tradedesk.servlet.OrderEntryServlet</servlet-class>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>OrderEntryServlet</servlet-name>
+        <url-pattern>/order/entry</url-pattern>
+    </servlet-mapping>
+
+    <!-- Order Status Servlet -->
+    <servlet>
+        <servlet-name>OrderStatusServlet</servlet-name>
+        <servlet-class>com.bigcorp.tradedesk.servlet.OrderStatusServlet</servlet-class>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>OrderStatusServlet</servlet-name>
+        <url-pattern>/order/status</url-pattern>
+    </servlet-mapping>
+
+    <!-- Welcome file list -->
+    <welcome-file-list>
+        <welcome-file>index.jsp</welcome-file>
+    </welcome-file-list>
+
+</web-app>
