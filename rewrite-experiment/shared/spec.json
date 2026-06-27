@@ -1,0 +1,1233 @@
+{
+  "system": {
+    "name": "BigCorp Trade Order Management System",
+    "domain": "Financial services / securities trading (equities + FX derivatives)",
+    "purpose": "Process equity trade orders, FX/derivative orders, settlement, notifications, risk assessment, and regulatory reporting",
+    "technology": {
+      "language": "Java 1.4",
+      "build": "Ant",
+      "devDatabase": "HSQLDB in-memory (jdbc:hsqldb:mem:bigcorpdb)",
+      "prodDatabase": "Oracle",
+      "messaging": "ActiveMQ (JMS)",
+      "webServices": "SOAP (Apache Axis)",
+      "fileTransfer": "SFTP (JSch)",
+      "email": "JavaMail (SMTP)",
+      "webUI": "Servlet 2.3 / JSP"
+    },
+    "modules": [
+      "common-lib",
+      "order-engine",
+      "settlement-gateway",
+      "pricing-service",
+      "notification-gateway",
+      "derivatives-engine",
+      "risk-engine",
+      "audit-service",
+      "reporting-service",
+      "trade-desk"
+    ]
+  },
+  "entities": [
+    {
+      "name": "TradeOrder",
+      "table": "TRADE_ORDERS",
+      "serialVersionUID": 100,
+      "fields": [
+        {"name": "orderId", "column": "ORDER_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "PK, format ORD-{timestamp}"},
+        {"name": "clientId", "column": "CLIENT_ID", "type": "String", "dbType": "VARCHAR(20)", "constraints": "NOT NULL, FK -> CLIENTS"},
+        {"name": "symbol", "column": "SYMBOL", "type": "String", "dbType": "VARCHAR(10)", "constraints": "NOT NULL"},
+        {"name": "quantity", "column": "QUANTITY", "type": "int", "dbType": "INTEGER", "constraints": "NOT NULL"},
+        {"name": "side", "column": "SIDE", "type": "String", "dbType": "VARCHAR(4)", "constraints": "NOT NULL, values: BUY, SELL"},
+        {"name": "price", "column": "PRICE", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "DEFAULT 0, filled price"},
+        {"name": "requestedPrice", "column": "REQUESTED_PRICE", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "DEFAULT 0"},
+        {"name": "status", "column": "STATUS", "type": "String", "dbType": "VARCHAR(20)", "constraints": "DEFAULT 'NEW'"},
+        {"name": "orderDate", "column": "ORDER_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "lastModified", "column": "LAST_MODIFIED", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "notes", "column": "NOTES", "type": "String", "dbType": "VARCHAR(500)", "constraints": "nullable, free text, sometimes contains XML"},
+        {"name": "surveillanceFlags", "column": "SURVEILLANCE_FLAGS", "type": "String", "dbType": "VARCHAR(200)", "constraints": "DEFAULT '', added Wave 10/2015"}
+      ],
+      "stateMachine": {
+        "states": ["NEW", "VALIDATED", "PRICED", "REJECTED", "FILLED", "SETTLED", "PENDING_REVIEW", "CANCELLED"],
+        "unusedStates": ["VALIDATED", "PRICED", "PENDING_REVIEW", "CANCELLED"],
+        "initialState": "NEW",
+        "transitions": [
+          {"from": "NEW", "to": "FILLED", "condition": "All rules pass AND price obtained AND manual checks pass"},
+          {"from": "NEW", "to": "REJECTED", "condition": "Any rule fails OR price unavailable OR price deviation > 10% OR client not found OR client inactive"},
+          {"from": "FILLED", "to": "SETTLED", "condition": "Settlement batch processes the order"},
+          {"from": "SETTLED", "to": "RECONCILED", "condition": "Clearinghouse returns CONF status"},
+          {"from": "SETTLED", "to": "DISCREPANCY", "condition": "Clearinghouse returns REJC or DISC status"}
+        ]
+      },
+      "constants": {
+        "STATUS_NEW": "NEW",
+        "STATUS_VALIDATED": "VALIDATED",
+        "STATUS_PRICED": "PRICED",
+        "STATUS_REJECTED": "REJECTED",
+        "STATUS_FILLED": "FILLED",
+        "STATUS_SETTLED": "SETTLED",
+        "STATUS_PENDING_REVIEW": "PENDING_REVIEW",
+        "STATUS_CANCELLED": "CANCELLED",
+        "SIDE_BUY": "BUY",
+        "SIDE_SELL": "SELL"
+      }
+    },
+    {
+      "name": "Client",
+      "table": "CLIENTS",
+      "serialVersionUID": 101,
+      "fields": [
+        {"name": "clientId", "column": "CLIENT_ID", "type": "String", "dbType": "VARCHAR(20)", "constraints": "PK"},
+        {"name": "name", "column": "CLIENT_NAME", "type": "String", "dbType": "VARCHAR(100)", "constraints": "NOT NULL"},
+        {"name": "email", "column": "EMAIL", "type": "String", "dbType": "VARCHAR(100)", "constraints": "nullable"},
+        {"name": "phone", "column": "PHONE", "type": "String", "dbType": "VARCHAR(20)", "constraints": "nullable"},
+        {"name": "tier", "column": "TIER", "type": "String", "dbType": "VARCHAR(10)", "constraints": "DEFAULT 'BRONZE'"},
+        {"name": "maxOrderValue", "column": "MAX_ORDER_VALUE", "type": "double", "dbType": "DECIMAL(15,2)", "constraints": "DEFAULT 100000.00"},
+        {"name": "active", "column": "ACTIVE", "type": "boolean", "dbType": "INTEGER", "constraints": "DEFAULT 1 (1=active, 0=inactive)"},
+        {"name": "kycStatus", "column": "KYC_STATUS", "type": "String", "dbType": "VARCHAR(20)", "constraints": "DEFAULT 'APPROVED'"},
+        {"name": "killSwitch", "column": "KILL_SWITCH", "type": "String", "dbType": "VARCHAR(1)", "constraints": "DEFAULT 'N'"}
+      ],
+      "constants": {
+        "TIER_PLATINUM": "PLATINUM",
+        "TIER_GOLD": "GOLD",
+        "TIER_SILVER": "SILVER",
+        "TIER_BRONZE": "BRONZE"
+      },
+      "defaults": {
+        "tier": "BRONZE",
+        "maxOrderValue": 100000.0,
+        "active": true,
+        "kycStatus": "APPROVED",
+        "killSwitch": "N"
+      }
+    },
+    {
+      "name": "Notification",
+      "table": "NOTIFICATIONS",
+      "serialVersionUID": 102,
+      "fields": [
+        {"name": "notificationId", "column": "NOTIFICATION_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "PK"},
+        {"name": "type", "column": "NOTIFICATION_TYPE", "type": "String", "dbType": "VARCHAR(20)", "constraints": "NOT NULL"},
+        {"name": "recipient", "column": "RECIPIENT", "type": "String", "dbType": "VARCHAR(100)", "constraints": "NOT NULL"},
+        {"name": "subject", "column": "SUBJECT", "type": "String", "dbType": "VARCHAR(200)", "constraints": "nullable"},
+        {"name": "body", "column": "BODY", "type": "String", "dbType": "VARCHAR(2000)", "constraints": "nullable"},
+        {"name": "channel", "column": "CHANNEL", "type": "String", "dbType": "VARCHAR(10)", "constraints": "NOT NULL"},
+        {"name": "status", "column": "STATUS", "type": "String", "dbType": "VARCHAR(10)", "constraints": "DEFAULT 'PENDING'"},
+        {"name": "orderId", "column": "ORDER_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "nullable"},
+        {"name": "createdDate", "column": "CREATED_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "sentDate", "column": "SENT_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "nullable"},
+        {"name": "retryCount", "column": "RETRY_COUNT", "type": "int", "dbType": "INTEGER", "constraints": "DEFAULT 0"}
+      ],
+      "stateMachine": {
+        "states": ["PENDING", "SENT", "FAILED"],
+        "initialState": "PENDING",
+        "transitions": [
+          {"from": "PENDING", "to": "SENT", "condition": "Dispatch successful"},
+          {"from": "PENDING", "to": "PENDING", "condition": "Dispatch failed AND retryCount < 3 (re-queued)"},
+          {"from": "PENDING", "to": "FAILED", "condition": "Dispatch failed AND retryCount >= 3"}
+        ]
+      },
+      "constants": {
+        "CHANNEL_EMAIL": "EMAIL",
+        "CHANNEL_SMS": "SMS",
+        "CHANNEL_FAX": "FAX",
+        "STATUS_PENDING": "PENDING",
+        "STATUS_SENT": "SENT",
+        "STATUS_FAILED": "FAILED",
+        "TYPE_ORDER_CONFIRM": "ORDER_CONFIRM",
+        "TYPE_ORDER_REJECT": "ORDER_REJECT",
+        "TYPE_SETTLEMENT": "SETTLEMENT",
+        "TYPE_PRICE_ALERT": "PRICE_ALERT"
+      },
+      "maxRetryCount": 3
+    },
+    {
+      "name": "SettlementRecord",
+      "table": "SETTLEMENT_RECORDS",
+      "serialVersionUID": 103,
+      "fields": [
+        {"name": "recordId", "column": "RECORD_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "PK, format SR-{timestamp}-{orderId.hashCode}"},
+        {"name": "orderId", "column": "ORDER_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "NOT NULL"},
+        {"name": "clientId", "column": "CLIENT_ID", "type": "String", "dbType": "VARCHAR(20)", "constraints": "NOT NULL"},
+        {"name": "symbol", "column": "SYMBOL", "type": "String", "dbType": "VARCHAR(10)", "constraints": "NOT NULL"},
+        {"name": "quantity", "column": "QUANTITY", "type": "int", "dbType": "INTEGER", "constraints": "NOT NULL"},
+        {"name": "side", "column": "SIDE", "type": "String", "dbType": "VARCHAR(4)", "constraints": "NOT NULL"},
+        {"name": "amount", "column": "AMOUNT", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "NOT NULL"},
+        {"name": "commission", "column": "COMMISSION", "type": "double", "dbType": "DECIMAL(10,4)", "constraints": "DEFAULT 0"},
+        {"name": "tradeDate", "column": "TRADE_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "NOT NULL"},
+        {"name": "settlementDate", "column": "SETTLEMENT_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "nullable, T+3 calendar days"},
+        {"name": "status", "column": "STATUS", "type": "String", "dbType": "VARCHAR(15)", "constraints": "DEFAULT 'PENDING'"},
+        {"name": "batchId", "column": "BATCH_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "nullable, format BATCH-yyyyMMdd-NNN"},
+        {"name": "externalRef", "column": "EXTERNAL_REF", "type": "String", "dbType": "VARCHAR(50)", "constraints": "nullable, from clearinghouse"}
+      ],
+      "stateMachine": {
+        "states": ["PENDING", "GENERATED", "UPLOADED", "CONFIRMED", "FAILED", "RECONCILED", "DISCREPANCY"],
+        "initialState": "PENDING",
+        "transitions": [
+          {"from": "PENDING", "to": "GENERATED", "condition": "Settlement file generated"},
+          {"from": "GENERATED", "to": "UPLOADED", "condition": "SFTP upload successful"},
+          {"from": "UPLOADED", "to": "RECONCILED", "condition": "Clearinghouse returns CONF"},
+          {"from": "UPLOADED", "to": "DISCREPANCY", "condition": "Clearinghouse returns REJC or DISC"},
+          {"from": "UPLOADED", "to": "CONFIRMED", "condition": "Clearinghouse XML returns CONFIRMED"},
+          {"from": "PENDING", "to": "FAILED", "condition": "Processing error"}
+        ]
+      }
+    },
+    {
+      "name": "AuditEvent",
+      "table": "AUDIT_LOG",
+      "serialVersionUID": 105,
+      "fields": [
+        {"name": "logId", "column": "LOG_ID", "type": "int", "dbType": "INTEGER IDENTITY", "constraints": "PK, auto-increment"},
+        {"name": "eventType", "column": "EVENT_TYPE", "type": "String", "dbType": "VARCHAR(30)", "constraints": "NOT NULL"},
+        {"name": "sourceSystem", "column": "SOURCE_SYSTEM", "type": "String", "dbType": "VARCHAR(30)", "constraints": "nullable"},
+        {"name": "entityType", "column": "ENTITY_TYPE", "type": "String", "dbType": "VARCHAR(20)", "constraints": "nullable"},
+        {"name": "entityId", "column": "ENTITY_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "nullable"},
+        {"name": "description", "column": "DESCRIPTION", "type": "String", "dbType": "VARCHAR(500)", "constraints": "nullable"},
+        {"name": "logDate", "column": "LOG_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "userId", "column": "USER_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "nullable"}
+      ],
+      "constants": {
+        "EVENT_ORDER_FILLED": "ORDER_FILLED",
+        "EVENT_ORDER_REJECTED": "ORDER_REJECTED",
+        "EVENT_ORDER_SETTLED": "ORDER_SETTLED",
+        "EVENT_BILLING_CHARGED": "BILLING_CHARGED",
+        "SOURCE_ORDER_ENGINE": "order-engine",
+        "SOURCE_SETTLEMENT": "settlement-gateway",
+        "SOURCE_AUDIT_SERVICE": "audit-service",
+        "ENTITY_ORDER": "ORDER",
+        "ENTITY_BILLING": "BILLING"
+      }
+    },
+    {
+      "name": "DerivativeOrder",
+      "table": null,
+      "module": "derivatives-engine",
+      "note": "Separate model from TradeOrder; no common-lib dependency",
+      "fields": [
+        {"name": "orderId", "type": "String", "constraints": "required"},
+        {"name": "clientId", "type": "String", "constraints": "required"},
+        {"name": "contractType", "type": "String", "constraints": "required, values: FX_SPOT, FX_FORWARD, OPTION_CALL, OPTION_PUT"},
+        {"name": "underlying", "type": "String", "constraints": "required"},
+        {"name": "strikePrice", "type": "double", "constraints": "> 0"},
+        {"name": "quantity", "type": "int", "constraints": "> 0"},
+        {"name": "expiry", "type": "String", "constraints": "nullable"},
+        {"name": "status", "type": "String", "constraints": "values: NEW, FILLED, REJECTED"},
+        {"name": "premium", "type": "double", "constraints": "computed"}
+      ],
+      "stateMachine": {
+        "states": ["NEW", "FILLED", "REJECTED"],
+        "initialState": "NEW",
+        "transitions": [
+          {"from": "NEW", "to": "FILLED", "condition": "Validation passes AND premium computed"},
+          {"from": "NEW", "to": "REJECTED", "condition": "Validation fails: missing fields, invalid type, or notional > 10,000,000"}
+        ]
+      },
+      "constants": {
+        "TYPE_FX_SPOT": "FX_SPOT",
+        "TYPE_FX_FORWARD": "FX_FORWARD",
+        "TYPE_OPTION_CALL": "OPTION_CALL",
+        "TYPE_OPTION_PUT": "OPTION_PUT",
+        "STATUS_NEW": "NEW",
+        "STATUS_FILLED": "FILLED",
+        "STATUS_REJECTED": "REJECTED"
+      }
+    },
+    {
+      "name": "RiskOrder",
+      "table": "RISK_ASSESSMENTS",
+      "module": "risk-engine",
+      "note": "Separate model from TradeOrder; no common-lib dependency",
+      "fields": [
+        {"name": "riskOrderId", "column": "RISK_ORDER_ID", "type": "String", "dbType": "VARCHAR(50)", "constraints": "PK"},
+        {"name": "sourceOrderId", "column": "SOURCE_ORDER_ID", "type": "String", "dbType": "VARCHAR(50)", "constraints": "nullable"},
+        {"name": "clientId", "column": "CLIENT_ID", "type": "String", "dbType": "VARCHAR(20)", "constraints": "nullable"},
+        {"name": "symbol", "column": "SYMBOL", "type": "String", "dbType": "VARCHAR(10)", "constraints": "nullable"},
+        {"name": "quantity", "column": "QUANTITY", "type": "int", "dbType": "INTEGER", "constraints": "nullable"},
+        {"name": "side", "column": "SIDE", "type": "String", "dbType": "VARCHAR(4)", "constraints": "nullable"},
+        {"name": "price", "column": "PRICE", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "nullable"},
+        {"name": "notionalValue", "column": "NOTIONAL_VALUE", "type": "double", "dbType": "DECIMAL(20,4)", "constraints": "computed: quantity * price"},
+        {"name": "exposureContribution", "column": "EXPOSURE_CONTRIBUTION", "type": "double", "dbType": "DECIMAL(20,4)", "constraints": "computed: +notional (BUY) / -notional (SELL)"},
+        {"name": "varContribution", "column": "VAR_CONTRIBUTION", "type": "double", "dbType": "DECIMAL(20,4)", "constraints": "computed: parametric VaR"},
+        {"name": "riskStatus", "column": "RISK_STATUS", "type": "String", "dbType": "VARCHAR(20)", "constraints": "values: PENDING, ASSESSED, FLAGGED, ERROR"},
+        {"name": "assessmentDate", "column": "ASSESSMENT_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"}
+      ],
+      "stateMachine": {
+        "states": ["PENDING", "ASSESSED", "FLAGGED", "ERROR"],
+        "initialState": "PENDING",
+        "transitions": [
+          {"from": "PENDING", "to": "ASSESSED", "condition": "VaR <= 50000.0"},
+          {"from": "PENDING", "to": "FLAGGED", "condition": "VaR > 50000.0"},
+          {"from": "PENDING", "to": "ERROR", "condition": "Assessment exception"}
+        ]
+      }
+    },
+    {
+      "name": "RuleContext",
+      "table": null,
+      "module": "common-lib",
+      "note": "Runtime context object passed through rule chain; not persisted directly",
+      "fields": [
+        {"name": "order", "type": "TradeOrder", "constraints": "required"},
+        {"name": "client", "type": "Client", "constraints": "required"},
+        {"name": "attributes", "type": "Map<String, Object>", "constraints": "generic key-value store for rule data"},
+        {"name": "messages", "type": "List<String>", "constraints": "rule evaluation messages"},
+        {"name": "warnings", "type": "List<String>", "constraints": "warnings that don't block the order"},
+        {"name": "rejected", "type": "boolean", "constraints": "default false"},
+        {"name": "rejectionReason", "type": "String", "constraints": "nullable"}
+      ]
+    },
+    {
+      "name": "BillingLedgerEntry",
+      "table": "BILLING_LEDGER",
+      "fields": [
+        {"name": "entryId", "column": "ENTRY_ID", "type": "int", "dbType": "INTEGER IDENTITY", "constraints": "PK, auto-increment"},
+        {"name": "orderId", "column": "ORDER_ID", "type": "String", "dbType": "VARCHAR(30)", "constraints": "NOT NULL"},
+        {"name": "clientId", "column": "CLIENT_ID", "type": "String", "dbType": "VARCHAR(20)", "constraints": "NOT NULL"},
+        {"name": "grossAmount", "column": "GROSS_AMOUNT", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "NOT NULL"},
+        {"name": "commissionAmount", "column": "COMMISSION_AMOUNT", "type": "double", "dbType": "DECIMAL(10,4)", "constraints": "NOT NULL"},
+        {"name": "netAmount", "column": "NET_AMOUNT", "type": "double", "dbType": "DECIMAL(15,4)", "constraints": "NOT NULL"},
+        {"name": "chargedDate", "column": "CHARGED_DATE", "type": "Date", "dbType": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "status", "column": "STATUS", "type": "String", "dbType": "VARCHAR(15)", "constraints": "DEFAULT 'CHARGED'"}
+      ]
+    }
+  ],
+  "additionalTables": [
+    {
+      "name": "RULE_AUDIT_LOG",
+      "purpose": "Every rule decision logged for regulatory compliance (REG-2011-003)",
+      "columns": [
+        {"name": "AUDIT_ID", "type": "INTEGER IDENTITY", "constraints": "PK"},
+        {"name": "RULE_NAME", "type": "VARCHAR(50)", "constraints": "NOT NULL"},
+        {"name": "ORDER_ID", "type": "VARCHAR(30)"},
+        {"name": "CLIENT_ID", "type": "VARCHAR(20)"},
+        {"name": "RESULT", "type": "VARCHAR(10)", "constraints": "NOT NULL, values: PASS, FAIL, SKIP"},
+        {"name": "EVALUATION_TIME", "type": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"},
+        {"name": "DETAILS", "type": "VARCHAR(500)"}
+      ]
+    },
+    {
+      "name": "DAILY_VOLUME_TRACKER",
+      "purpose": "Regulatory tracking table (REG-2005-001), unused in hot path",
+      "columns": [
+        {"name": "CLIENT_ID", "type": "VARCHAR(20)", "constraints": "PK (composite)"},
+        {"name": "TRADE_DATE", "type": "DATE", "constraints": "PK (composite)"},
+        {"name": "TOTAL_SHARES", "type": "INTEGER", "constraints": "DEFAULT 0"},
+        {"name": "LAST_UPDATED", "type": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "PRICING_CACHE",
+      "purpose": "Cached pricing data for symbol lookups",
+      "columns": [
+        {"name": "SYMBOL", "type": "VARCHAR(10)", "constraints": "PK"},
+        {"name": "BID_PRICE", "type": "DECIMAL(15,4)"},
+        {"name": "ASK_PRICE", "type": "DECIMAL(15,4)"},
+        {"name": "LAST_PRICE", "type": "DECIMAL(15,4)"},
+        {"name": "CURRENCY", "type": "VARCHAR(3)", "constraints": "DEFAULT 'USD'"},
+        {"name": "LAST_UPDATED", "type": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "SURVEILLANCE_AUDIT_LOG",
+      "purpose": "Separate audit trail for surveillance rules (REG-2015)",
+      "columns": [
+        {"name": "LOG_ID", "type": "INTEGER IDENTITY", "constraints": "PK"},
+        {"name": "RULE_NAME", "type": "VARCHAR(100)", "constraints": "NOT NULL"},
+        {"name": "ORDER_ID", "type": "VARCHAR(50)"},
+        {"name": "CLIENT_ID", "type": "VARCHAR(20)"},
+        {"name": "SYMBOL", "type": "VARCHAR(10)"},
+        {"name": "RESULT", "type": "VARCHAR(20)"},
+        {"name": "SURVEILLANCE_FLAGS", "type": "VARCHAR(200)"},
+        {"name": "EVALUATION_TIME", "type": "TIMESTAMP"},
+        {"name": "DETAILS", "type": "VARCHAR(500)"}
+      ]
+    },
+    {
+      "name": "POSITION_TRACKING",
+      "purpose": "Net position per client per symbol for position limit checks (REG-2015-003)",
+      "columns": [
+        {"name": "CLIENT_ID", "type": "VARCHAR(20)", "constraints": "PK (composite)"},
+        {"name": "SYMBOL", "type": "VARCHAR(10)", "constraints": "PK (composite)"},
+        {"name": "NET_POSITION", "type": "INTEGER", "constraints": "DEFAULT 0"},
+        {"name": "LAST_UPDATED", "type": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "REG_REPORT_LOG",
+      "purpose": "Tracks regulatory report generation (REG-2021-001)",
+      "columns": [
+        {"name": "LOG_ID", "type": "INTEGER IDENTITY", "constraints": "PK"},
+        {"name": "REPORT_TYPE", "type": "VARCHAR(50)", "constraints": "NOT NULL"},
+        {"name": "FILE_PATH", "type": "VARCHAR(500)"},
+        {"name": "RECORD_COUNT", "type": "INTEGER", "constraints": "DEFAULT 0"},
+        {"name": "STATUS", "type": "VARCHAR(50)"},
+        {"name": "GENERATION_TIME", "type": "TIMESTAMP", "constraints": "DEFAULT CURRENT_TIMESTAMP"}
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "RUL-001",
+      "name": "LayeringDetectionRule",
+      "className": "com.bigcorp.common.rules.impl.LayeringDetectionRule",
+      "priority": 125,
+      "category": "Surveillance",
+      "behavior": "FLAG",
+      "condition": "COUNT(non-CANCELLED orders for same client+symbol) > threshold",
+      "threshold": {"layeringOrderCount": 5},
+      "failOpen": true,
+      "regulatoryRef": "REG-2015-001",
+      "contextAttributes": ["layering_checked", "layering_order_count", "layering_status", "surveillance_flags"],
+      "sql": "SELECT COUNT(*) FROM TRADE_ORDERS WHERE CLIENT_ID = ? AND SYMBOL = ? AND STATUS <> 'CANCELLED'"
+    },
+    {
+      "id": "RUL-002",
+      "name": "SpoofingPatternRule",
+      "className": "com.bigcorp.common.rules.impl.SpoofingPatternRule",
+      "priority": 124,
+      "category": "Surveillance",
+      "behavior": "FLAG",
+      "condition": "cancelledOrders / totalOrders > threshold",
+      "threshold": {"cancelRateThreshold": 0.60},
+      "failOpen": true,
+      "regulatoryRef": "REG-2015-002",
+      "contextAttributes": ["spoofing_checked", "spoofing_cancel_rate", "spoofing_status", "surveillance_flags"]
+    },
+    {
+      "id": "RUL-003",
+      "name": "PositionLimitRule",
+      "className": "com.bigcorp.common.rules.impl.PositionLimitRule",
+      "priority": 123,
+      "category": "Surveillance",
+      "behavior": "REJECT",
+      "condition": "abs(currentPosition +/- orderQty) > DEFAULT_POSITION_LIMIT",
+      "threshold": {"defaultPositionLimit": 100000},
+      "failOpen": true,
+      "regulatoryRef": "REG-2015-003",
+      "contextAttributes": ["position_limit_checked", "current_position", "position_status"],
+      "sql": "SELECT NET_POSITION FROM POSITION_TRACKING WHERE CLIENT_ID = ? AND SYMBOL = ?",
+      "notes": "Position limit should be configurable per client but hardcoded for now (JIRA-8200)"
+    },
+    {
+      "id": "RUL-004",
+      "name": "MarketHaltRule",
+      "className": "com.bigcorp.common.rules.impl.MarketHaltRule",
+      "priority": 120,
+      "category": "CircuitBreaker",
+      "behavior": "REJECT",
+      "condition": "System.getProperty('bigcorp.market.halted') == 'true'",
+      "threshold": {},
+      "failOpen": false,
+      "regulatoryRef": "REG-2011-001",
+      "contextAttributes": ["market_halt_checked"],
+      "notes": "No exceptions, no overrides. SecurityManager errors default to not halted."
+    },
+    {
+      "id": "RUL-005",
+      "name": "ClientKillSwitchRule",
+      "className": "com.bigcorp.common.rules.impl.ClientKillSwitchRule",
+      "priority": 118,
+      "category": "CircuitBreaker",
+      "behavior": "REJECT",
+      "condition": "CLIENTS.KILL_SWITCH == 'Y' (case-insensitive, trimmed)",
+      "threshold": {},
+      "failOpen": true,
+      "regulatoryRef": "REG-2011-002",
+      "contextAttributes": ["kill_switch_checked"],
+      "sql": "SELECT KILL_SWITCH FROM CLIENTS WHERE CLIENT_ID = ?",
+      "notes": "Missing column or DB error defaults to 'N' (allow)"
+    },
+    {
+      "id": "RUL-006",
+      "name": "KYCStatusRule",
+      "className": "com.bigcorp.common.rules.impl.KYCStatusRule",
+      "priority": 115,
+      "category": "Compliance",
+      "behavior": "REJECT",
+      "condition": "CLIENTS.KYC_STATUS != 'APPROVED'",
+      "threshold": {"allowedStatuses": ["APPROVED"]},
+      "failOpen": false,
+      "regulatoryRef": "post-2005 regulatory review",
+      "contextAttributes": ["kyc_status"],
+      "sql": "SELECT KYC_STATUS FROM CLIENTS WHERE CLIENT_ID = ?",
+      "notes": "Missing KYC record treated as PENDING (reject)"
+    },
+    {
+      "id": "RUL-007",
+      "name": "DailyVolumeLimitRule",
+      "className": "com.bigcorp.common.rules.impl.DailyVolumeLimitRule",
+      "priority": 110,
+      "category": "Compliance",
+      "behavior": "REJECT",
+      "condition": "order.quantity > MAX_SHARES_PER_ORDER",
+      "threshold": {"maxSharesPerOrder": 50000},
+      "failOpen": false,
+      "regulatoryRef": "REG-2005-001",
+      "contextAttributes": ["daily_volume_checked", "compliance_flags"],
+      "notes": "Per-order check despite the name; cumulative daily tracking never implemented (DBA said too slow)"
+    },
+    {
+      "id": "RUL-008",
+      "name": "WashTradeDetectionRule",
+      "className": "com.bigcorp.common.rules.impl.WashTradeDetectionRule",
+      "priority": 105,
+      "category": "Compliance",
+      "behavior": "REJECT",
+      "condition": "Opposite-side order from same client+symbol exists within window AND status != REJECTED",
+      "threshold": {"washTradeWindowMinutes": 5},
+      "failOpen": true,
+      "regulatoryRef": "REG-2005-002, SEC Rule 10b-5",
+      "contextAttributes": ["wash_trade_checked"],
+      "sql": "SELECT COUNT(*) FROM TRADE_ORDERS WHERE CLIENT_ID = ? AND SYMBOL = ? AND SIDE = ? AND STATUS <> 'REJECTED' AND ORDER_DATE > CURRENT_TIMESTAMP - 5 * INTERVAL '1' MINUTE"
+    },
+    {
+      "id": "RUL-009",
+      "name": "MaxOrderValueRule",
+      "className": "com.bigcorp.common.rules.impl.MaxOrderValueRule",
+      "priority": 100,
+      "category": "Business",
+      "behavior": "REJECT",
+      "condition": "quantity * requestedPrice > client.maxOrderValue * BUFFER_MULTIPLIER",
+      "threshold": {"bufferMultiplier": 1.10},
+      "failOpen": false,
+      "notes": "10% buffer added for JIRA-1892 (Henderson Capital complaint, 2000)"
+    },
+    {
+      "id": "RUL-010",
+      "name": "RestrictedSymbolRule",
+      "className": "com.bigcorp.common.rules.impl.RestrictedSymbolRule",
+      "priority": 95,
+      "category": "Business",
+      "behavior": "REJECT",
+      "condition": "order.symbol IN restrictedSymbols",
+      "threshold": {"restrictedSymbols": ["ENRN", "WCOM", "TYCO", "ADLP"]},
+      "failOpen": false,
+      "contextAttributes": ["restricted_check"],
+      "notes": "TODO: move to database table (JIRA-4100)"
+    },
+    {
+      "id": "RUL-011",
+      "name": "ClientTierRule",
+      "className": "com.bigcorp.common.rules.impl.ClientTierRule",
+      "priority": 90,
+      "category": "Business",
+      "behavior": "REJECT_IF_INACTIVE",
+      "condition": "client.isActive() == false -> REJECT; else set priority attribute",
+      "threshold": {},
+      "failOpen": true,
+      "contextAttributes": ["priority"],
+      "notes": "PLATINUM/GOLD -> priority=HIGH, SILVER/BRONZE -> priority=NORMAL. Null client warns but passes."
+    },
+    {
+      "id": "RUL-012",
+      "name": "MarketHoursRule",
+      "className": "com.bigcorp.common.rules.impl.MarketHoursRule",
+      "priority": 80,
+      "category": "Business",
+      "behavior": "PASS_WITH_QUEUE",
+      "condition": "Current time outside 9:30-16:00 or weekend",
+      "threshold": {
+        "marketOpenHour": 9,
+        "marketOpenMinute": 30,
+        "marketCloseHour": 16,
+        "marketCloseMinute": 0
+      },
+      "failOpen": true,
+      "contextAttributes": ["queued"],
+      "knownBug": "Uses server local time, not Eastern Time. Disabled 6 months in 2001 when server clock was wrong."
+    },
+    {
+      "id": "RUL-013",
+      "name": "ShortSaleRule",
+      "className": "com.bigcorp.common.rules.impl.ShortSaleRule",
+      "priority": 75,
+      "category": "Business",
+      "behavior": "REJECT",
+      "condition": "order.side == SELL AND order.quantity > 1000",
+      "threshold": {"shortSaleShareLimit": 1000},
+      "failOpen": true,
+      "contextAttributes": ["short_sale_commission"],
+      "notes": "Not in rules.xml (JIRA-4101); added manually after XML-loaded rules"
+    },
+    {
+      "id": "RUL-014",
+      "name": "MultiCurrencyRule",
+      "className": "com.bigcorp.common.rules.impl.MultiCurrencyRule",
+      "priority": 60,
+      "category": "Business",
+      "behavior": "PASS",
+      "condition": "Sets FX rate context attributes based on currency. Unknown currencies default to USD (not rejected).",
+      "threshold": {
+        "fxRates": {
+          "EUR": 1.10,
+          "GBP": 1.55,
+          "JPY": 0.009,
+          "CHF": 0.72
+        },
+        "commissionRate": 0.02
+      },
+      "failOpen": true,
+      "contextAttributes": ["fx_rate_applied", "settlement_currency"],
+      "notes": "FX rates copy-pasted from FxPricingHelper (JIRA-7101). Commission rate copy-pasted from CommissionCalculator default (JIRA-7103)."
+    },
+    {
+      "id": "RUL-015",
+      "name": "VolumeDiscountRule",
+      "className": "com.bigcorp.common.rules.impl.VolumeDiscountRule",
+      "priority": 55,
+      "category": "Pricing",
+      "behavior": "PASS",
+      "condition": "Always passes. Adjusts commission discount on execute().",
+      "threshold": {
+        "largeOrderThreshold": 5000,
+        "largeOrderDiscount": 0.25,
+        "veryLargeOrderThreshold": 10000,
+        "veryLargeOrderDiscount": 0.50,
+        "baseCommission": 0.02
+      },
+      "failOpen": true,
+      "contextAttributes": ["volume_discount", "volume_discount_applied"],
+      "notes": "Uses hardcoded 0.02 base commission instead of CommissionCalculator (JIRA-6001)"
+    },
+    {
+      "id": "RUL-016",
+      "name": "SpecialClientsRule",
+      "className": "com.bigcorp.common.rules.impl.SpecialClientsRule",
+      "priority": 50,
+      "category": "Business",
+      "behavior": "PASS",
+      "condition": "Always passes. Applies per-client overrides on execute().",
+      "threshold": {},
+      "failOpen": true,
+      "contextAttributes": ["commission_override", "pricing_tier_override", "early_access", "multi_currency_priority"],
+      "notes": "See specialClients array for full details. TODO: move to database (JIRA-7200). Class is too long (JIRA-7201)."
+    },
+    {
+      "id": "RUL-017",
+      "name": "LoyaltyBonusRule",
+      "className": "com.bigcorp.common.rules.impl.LoyaltyBonusRule",
+      "priority": 45,
+      "category": "Pricing",
+      "behavior": "PASS",
+      "condition": "Always passes. Adds loyalty bonus for hardcoded client list.",
+      "threshold": {
+        "loyaltyBonus": 0.10,
+        "eligibleClients": ["C001", "C002", "C003"]
+      },
+      "failOpen": true,
+      "contextAttributes": ["loyalty_bonus"],
+      "notes": "Hardcoded client tenure check (JIRA-6002). C001 joined 1999, C002 joined 1999, C003 joined 2000."
+    }
+  ],
+  "ruleEngine": {
+    "pattern": "Chain of Responsibility",
+    "singleton": true,
+    "threadSafe": false,
+    "configFile": "config/rules.xml",
+    "fallbackRules": ["MaxOrderValueRule", "ClientTierRule", "MarketHoursRule", "SpecialClientsRule"],
+    "manuallyAddedRules": ["ShortSaleRule"],
+    "prioritySortOrder": "DESCENDING (higher number runs first) by default",
+    "priorityFixProperty": "bigcorp.rules.priority.fixed",
+    "priorityFixDefault": false,
+    "behaviorOnEvaluateException": "REJECT",
+    "behaviorOnExecuteException": "LOG_AND_CONTINUE",
+    "ruleAuditLogging": true,
+    "ruleAuditTable": "RULE_AUDIT_LOG"
+  },
+  "integrations": [
+    {
+      "type": "JMS",
+      "name": "BIGCORP.TRADE.ORDERS",
+      "direction": "inbound",
+      "producer": "trade-desk (OrderEntryServlet, FrontControllerServlet), DemoRunner",
+      "consumer": "OrderMessageListener (order-engine)",
+      "messageFormat": "XML (TradeOrder)",
+      "pollTimeoutMs": 5000
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.TRADE.CONFIRMATIONS",
+      "direction": "outbound",
+      "producer": "OrderMessageListener (order-engine)",
+      "consumer": "AuditListener (audit-service), settlement-gateway",
+      "messageFormat": "XML (TradeOrder status update)"
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.NOTIFICATIONS",
+      "direction": "internal",
+      "producer": "OrderMessageListener, BatchProcessor (settlement)",
+      "consumer": "NotificationListener (notification-gateway)",
+      "messageFormat": "XML (Notification)",
+      "pollTimeoutMs": 5000
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.SETTLEMENT.EVENTS",
+      "direction": "unknown",
+      "producer": "unknown (cancelled project)",
+      "consumer": "unknown",
+      "messageFormat": "unknown",
+      "notes": "Created for cancelled project; removing breaks settlement (unknown dependency)"
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.DERIVATIVES.ORDERS",
+      "direction": "inbound",
+      "producer": "derivatives clients",
+      "consumer": "derivatives-engine",
+      "messageFormat": "XML (DerivativeOrder)"
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.DERIVATIVES.CONFIRMS",
+      "direction": "outbound",
+      "producer": "derivatives-engine",
+      "consumer": "downstream",
+      "messageFormat": "XML (DerivativeOrder)"
+    },
+    {
+      "type": "JMS",
+      "name": "BIGCORP.DERIVATIVES.PRICING",
+      "direction": "inbound",
+      "producer": "pricing feed",
+      "consumer": "derivatives-engine",
+      "messageFormat": "XML (pricing data)"
+    },
+    {
+      "type": "JMS",
+      "name": "RISK.ORDERS.INBOUND",
+      "direction": "inbound",
+      "producer": "order-engine or manual",
+      "consumer": "RiskScheduler (risk-engine)",
+      "messageFormat": "XML (order data)"
+    },
+    {
+      "type": "JMS",
+      "name": "RISK.RESULTS.OUTBOUND",
+      "direction": "outbound",
+      "producer": "ExposureCalculator (risk-engine)",
+      "consumer": "downstream",
+      "messageFormat": "XML (risk assessment results)"
+    },
+    {
+      "type": "JMS_BROKER",
+      "name": "ActiveMQ",
+      "devUrl": "vm://localhost?broker.persistent=false",
+      "prodUrl": "tcp://localhost:61616",
+      "configFile": "mq.properties",
+      "acknowledgeMode": "AUTO_ACKNOWLEDGE"
+    },
+    {
+      "type": "SOAP",
+      "name": "PricingService",
+      "endpoint": "http://localhost:8080/pricing-service/services/PricingService",
+      "namespace": "http://bigcorp.com/pricing",
+      "responseNamespace": "http://pricing.bigcorp.com/types",
+      "operations": ["GetQuote", "BatchQuote"],
+      "wsdlPath": "/WEB-INF/wsdl/PricingService.wsdl",
+      "soapActionRequired": true,
+      "fallbackChain": ["SOAP call", "database lookup (PRICING_CACHE)", "hardcoded prices"]
+    },
+    {
+      "type": "SFTP",
+      "name": "ClearinghouseSFTP",
+      "host": "localhost",
+      "port": 2222,
+      "username": "bigcorp_settle",
+      "password": "settle_pass",
+      "uploadDir": "/incoming/",
+      "inboundPollDir": "/outgoing/",
+      "localOutputDir": "./sftp-outbound/",
+      "localInboundDir": "./sftp-root/inbound/",
+      "localProcessedDir": "./sftp-root/processed/",
+      "localFallbackDir": "./sftp-root/outbound/",
+      "configFile": "config/real/settlement.properties"
+    },
+    {
+      "type": "SMTP",
+      "name": "EmailRelay",
+      "host": "smtp-internal.bigcorp.com",
+      "port": 25,
+      "fromAddress": "noreply@bigcorp.com",
+      "authentication": false,
+      "htmlEnabled": true,
+      "devMode": "log to console when SMTP host is empty",
+      "configFile": "notification.properties",
+      "notes": "Unreliable during 5:00-5:30 PM EST market close"
+    },
+    {
+      "type": "DATABASE",
+      "name": "HSQLDB_DEV",
+      "url": "jdbc:hsqldb:mem:bigcorpdb",
+      "driver": "org.hsqldb.jdbc.JDBCDriver",
+      "environment": "development"
+    },
+    {
+      "type": "DATABASE",
+      "name": "Oracle_PROD",
+      "driver": "org.oracle.jdbc.driver.OracleDriver",
+      "environment": "production",
+      "configFile": "db.properties",
+      "notes": "DDL managed by DBA via sql/schema-oracle.sql; bootstrap skips DDL for Oracle"
+    }
+  ],
+  "financials": {
+    "commissionRates": {
+      "source": "CommissionCalculator (common-lib)",
+      "formula": "commission = orderValue * getRate(clientTier)",
+      "rates": {
+        "PLATINUM": 0.005,
+        "GOLD": 0.010,
+        "SILVER": 0.015,
+        "BRONZE": 0.020,
+        "DEFAULT": 0.020
+      }
+    },
+    "commissionRateDiscrepancies": [
+      {
+        "location": "PricingServiceImpl (pricing-service)",
+        "rate": 0.015,
+        "note": "Flat rate for all tiers, different from CommissionCalculator tier-based rates"
+      },
+      {
+        "location": "DerivativeProcessor (derivatives-engine)",
+        "rate": 0.015,
+        "note": "FX/derivatives commission, agreed with derivatives trading manager"
+      },
+      {
+        "location": "VolumeDiscountRule (common-lib)",
+        "rate": 0.02,
+        "note": "Copy-pasted BASE_COMMISSION instead of using CommissionCalculator (JIRA-6001)"
+      },
+      {
+        "location": "MultiCurrencyRule (common-lib)",
+        "rate": 0.02,
+        "note": "Copy-pasted COMMISSION_RATE instead of using CommissionCalculator (JIRA-7103)"
+      }
+    ],
+    "volumeDiscounts": [
+      {"minQuantity": 5001, "maxQuantity": 10000, "discountPercent": 25},
+      {"minQuantity": 10001, "maxQuantity": null, "discountPercent": 50}
+    ],
+    "loyaltyBonus": {
+      "discountPercent": 10,
+      "eligibleClients": ["C001", "C002", "C003"],
+      "note": "Hardcoded tenure check; C001 joined 1999, C002 joined 1999, C003 joined 2000 (JIRA-6002)"
+    },
+    "pricingSpreads": {
+      "source": "PricingServiceImpl (pricing-service)",
+      "formula": "bidPrice = lastPrice * (1.0 - spread); askPrice = lastPrice * (1.0 + spread)",
+      "rates": {
+        "PLATINUM": 0.001,
+        "GOLD": 0.002,
+        "SILVER": 0.003,
+        "BRONZE": 0.005,
+        "DEFAULT": 0.005
+      }
+    },
+    "fxRates": {
+      "sources": ["MultiCurrencyRule", "FxPricingHelper", "DerivativeProcessor"],
+      "note": "Hardcoded as of 2004-07-15; duplicated in 3 places (JIRA-7101)",
+      "rates": {
+        "EUR/USD": 1.10,
+        "GBP/USD": 1.55,
+        "JPY/USD": 0.009,
+        "CHF/USD": 0.72,
+        "AUD/USD": 0.68,
+        "USD/USD": 1.0
+      },
+      "fxSpread": 0.002,
+      "fxSpreadNote": "bid = mid * (1 - spread/2), ask = mid * (1 + spread/2)"
+    },
+    "varCalculation": {
+      "method": "Simplified parametric (delta-normal)",
+      "formula": "VaR = |notional| * volatility * zScore * sqrt(holdingPeriod / tradingDaysPerYear)",
+      "parameters": {
+        "zScore": 2.33,
+        "confidenceLevel": "99%",
+        "holdingPeriodDays": 1.0,
+        "tradingDaysPerYear": 252.0
+      },
+      "volatilityAssumptions": {
+        "equity": 0.20,
+        "fx": 0.08,
+        "commodity": 0.30,
+        "default": 0.25
+      },
+      "commoditySymbols": ["GOLD", "OIL", "SILVER"],
+      "fxDetection": "symbol contains '/'",
+      "flagThreshold": 50000.0
+    },
+    "derivativesPremium": {
+      "fxSpotForward": {
+        "formula": "notional * FX_COMMISSION",
+        "rate": 0.015
+      },
+      "optionCallPut": {
+        "formula": "notional * 0.05",
+        "rate": 0.05,
+        "note": "Flat 5% of notional, placeholder for Black-Scholes"
+      },
+      "maxNotional": 10000000.0
+    },
+    "hardcodedPrices": {
+      "source": "PricingServiceImpl fallback",
+      "note": "Prices from 2000-2001, certainly stale. Unknown symbols return default. (JIRA-1102)",
+      "fallback": [
+        {"symbol": "MSFT", "bid": 25.00, "ask": 25.50, "last": 25.25},
+        {"symbol": "IBM", "bid": 119.00, "ask": 120.00, "last": 119.50},
+        {"symbol": "ORCL", "bid": 15.00, "ask": 15.50, "last": 15.25},
+        {"symbol": "SUNW", "bid": 8.50, "ask": 9.00, "last": 8.75},
+        {"symbol": "CSCO", "bid": 21.50, "ask": 22.00, "last": 21.75},
+        {"symbol": "INTC", "bid": 30.00, "ask": 30.50, "last": 30.25},
+        {"symbol": "DELL", "bid": 34.50, "ask": 35.00, "last": 34.75},
+        {"symbol": "DEFAULT", "bid": 10.00, "ask": 10.50, "last": 10.25}
+      ],
+      "databasePrices": [
+        {"symbol": "MSFT", "bid": 25.50, "ask": 25.75, "last": 25.63},
+        {"symbol": "IBM", "bid": 120.00, "ask": 120.50, "last": 120.25},
+        {"symbol": "ORCL", "bid": 15.25, "ask": 15.50, "last": 15.38},
+        {"symbol": "SUNW", "bid": 8.75, "ask": 9.00, "last": 8.88},
+        {"symbol": "CSCO", "bid": 22.00, "ask": 22.25, "last": 22.13},
+        {"symbol": "INTC", "bid": 30.50, "ask": 30.75, "last": 30.63},
+        {"symbol": "DELL", "bid": 35.00, "ask": 35.25, "last": 35.13}
+      ]
+    },
+    "orderProcessing": {
+      "priceDeviationThreshold": 0.10,
+      "manualVolumeLimitShares": 50000,
+      "pollTimeoutMs": 5000,
+      "errorBackoffMs": 2000
+    }
+  },
+  "specialClients": [
+    {
+      "clientId": "C001",
+      "name": "Acme Trading LLC",
+      "tier": "GOLD",
+      "maxOrderValue": 500000.00,
+      "override": "Early market access",
+      "details": "Can trade 10 minutes before market open (9:20 AM). Per email from VP of Sales, 2000-03-15.",
+      "contextAttributes": {"early_access": true, "early_access_time": "9:20 AM"},
+      "loyaltyBonusEligible": true
+    },
+    {
+      "clientId": "C002",
+      "name": "Henderson Capital",
+      "tier": "PLATINUM",
+      "maxOrderValue": 5000000.00,
+      "override": "Zero commission",
+      "details": "No commission on first 1000 shares/day. Negotiated by Jim in sales, 1999.",
+      "contextAttributes": {"commission_override": 0.0},
+      "loyaltyBonusEligible": true
+    },
+    {
+      "clientId": "C003",
+      "name": "Smith & Associates",
+      "tier": "SILVER",
+      "maxOrderValue": 250000.00,
+      "override": "GOLD-tier commission rate",
+      "details": "Gets 1.0% commission instead of SILVER 1.5%. Per email from VP Sales 2009-03-10.",
+      "contextAttributes": {"commission_override": 0.01},
+      "loyaltyBonusEligible": true
+    },
+    {
+      "clientId": "C004",
+      "name": "MegaFund Inc",
+      "tier": "GOLD",
+      "maxOrderValue": 1000000.00,
+      "override": "PLATINUM pricing tier",
+      "details": "Gets PLATINUM pricing spreads. Per verbal agreement with CEO. 'Do not change without checking with Larry.'",
+      "contextAttributes": {"pricing_tier_override": "PLATINUM"}
+    },
+    {
+      "clientId": "C005",
+      "name": "Pinnacle Investments",
+      "tier": "BRONZE",
+      "maxOrderValue": 100000.00,
+      "override": "50% commission discount",
+      "details": "Gets 1.0% commission (50% off BRONZE 2.0%). JIRA-3401, implemented after 10 years.",
+      "contextAttributes": {"commission_override": 0.01}
+    },
+    {
+      "clientId": "C006",
+      "name": "Global Macro Fund",
+      "tier": "PLATINUM",
+      "maxOrderValue": 10000000.00,
+      "override": "Zero commission + early market access",
+      "details": "CEO directive 2009-06-01.",
+      "contextAttributes": {"commission_override": 0.0, "early_access": true}
+    },
+    {
+      "clientId": "C007",
+      "name": "Velocity Trading LLC",
+      "tier": "GOLD",
+      "maxOrderValue": 2000000.00,
+      "override": "PLATINUM pricing tier",
+      "details": "Sales promised PLATINUM pricing rates.",
+      "contextAttributes": {"pricing_tier_override": "PLATINUM"}
+    },
+    {
+      "clientId": "C008",
+      "name": "Falcon Trading Group",
+      "tier": "unknown",
+      "maxOrderValue": null,
+      "override": "75% commission discount",
+      "details": "Gets 0.5% commission. Per email from Sales Director, 2014-01-15.",
+      "contextAttributes": {"commission_override": 0.005},
+      "notes": "No sample CLIENTS row seeded for C008"
+    },
+    {
+      "clientId": "C009",
+      "name": "Apex Capital",
+      "tier": "unknown (SILVER implied)",
+      "maxOrderValue": null,
+      "override": "GOLD pricing tier",
+      "details": "Copy-pasted from C004 logic. JIRA-7202.",
+      "contextAttributes": {"pricing_tier_override": "GOLD"},
+      "notes": "No sample CLIENTS row seeded for C009"
+    },
+    {
+      "clientId": "C010",
+      "name": "Sterling Investments",
+      "tier": "unknown",
+      "maxOrderValue": null,
+      "override": "Zero commission + FX priority",
+      "details": "Added same day as multi-currency feature.",
+      "contextAttributes": {"commission_override": 0.0, "multi_currency_priority": true},
+      "notes": "No sample CLIENTS row seeded for C010"
+    }
+  ],
+  "sampleData": {
+    "clients": [
+      {"clientId": "C001", "name": "Acme Trading LLC", "email": "trading@acme.com", "phone": "555-0100", "tier": "GOLD", "maxOrderValue": 500000.00, "active": 1},
+      {"clientId": "C002", "name": "Henderson Capital", "email": "orders@henderson.com", "phone": "555-0200", "tier": "PLATINUM", "maxOrderValue": 5000000.00, "active": 1},
+      {"clientId": "C003", "name": "Smith & Associates", "email": "desk@smithassoc.com", "phone": "555-0300", "tier": "SILVER", "maxOrderValue": 250000.00, "active": 1},
+      {"clientId": "C004", "name": "MegaFund Inc", "email": "ops@megafund.com", "phone": "555-0400", "tier": "GOLD", "maxOrderValue": 1000000.00, "active": 1},
+      {"clientId": "C005", "name": "Pinnacle Investments", "email": "trade@pinnacle.com", "phone": "555-0500", "tier": "BRONZE", "maxOrderValue": 100000.00, "active": 1},
+      {"clientId": "C006", "name": "Global Macro Fund", "email": "globalfund@trading.com", "phone": "555-0600", "tier": "PLATINUM", "maxOrderValue": 10000000.00, "active": 1},
+      {"clientId": "C007", "name": "Velocity Trading LLC", "email": "trades@velocity.com", "phone": "555-0700", "tier": "GOLD", "maxOrderValue": 2000000.00, "active": 1}
+    ]
+  },
+  "settlement": {
+    "batchIdFormat": "BATCH-yyyyMMdd-NNN",
+    "recordIdFormat": "SR-{timestamp}-{orderId.hashCode}",
+    "settlementDateRule": "T+3 calendar days (does NOT skip weekends/holidays, JIRA-2890)",
+    "amountFormula": "quantity * price",
+    "commissionSource": "CommissionCalculator (tier-based)",
+    "batchSchedule": "6 PM EST via cron (production); Timer-based in dev/demo",
+    "batchIntervalMs": 60000,
+    "fileFormats": ["XML", "flat (.dat)"],
+    "noRollback": true,
+    "partialBatchModeImplemented": false,
+    "reconciliation": {
+      "inboundFormats": ["XML (.xml)", "fixed-width DAT (.dat)"],
+      "datStatusMapping": {
+        "CONF": "RECONCILED",
+        "REJC": "DISCREPANCY",
+        "DISC": "DISCREPANCY",
+        "PEND": "skipped"
+      },
+      "datFileFormat": {
+        "header": "HDR (80 chars)",
+        "dataFields": [
+          {"name": "recordId", "position": "1-20", "width": 20},
+          {"name": "externalRef", "position": "21-30", "width": 10},
+          {"name": "status", "position": "31-40", "width": 10},
+          {"name": "amount", "position": "41-50", "width": 10, "note": "implied 2 decimals, right-justified"},
+          {"name": "date", "position": "51-58", "width": 8, "format": "YYYYMMDD"},
+          {"name": "reasonCode", "position": "59-78", "width": 20}
+        ],
+        "trailer": "TRL + record count (10, right-justified)"
+      }
+    }
+  },
+  "regulatoryReporting": {
+    "regulatoryRef": "REG-2021-001",
+    "reportType": "DAILY_TRADE_REPORT",
+    "formats": ["fixed-width (.dat, REG-FW-001)", "XML (.xml, REG-XML-001)"],
+    "dataScope": "All FILLED and SETTLED orders, ordered by ORDER_DATE ASC",
+    "outputDir": "./regulatory-output/",
+    "fileNameFormat": "REG_REPORT_{yyyyMMdd_HHmmss}.{dat|xml}",
+    "fixedWidthSpec": {
+      "header": "HDR + firmName(30) + timestamp(19)",
+      "dataPrefix": "DTL",
+      "fields": [
+        {"name": "orderId", "width": 20},
+        {"name": "clientId", "width": 10},
+        {"name": "symbol", "width": 10},
+        {"name": "side", "width": 4},
+        {"name": "quantity", "width": 12, "alignment": "right"},
+        {"name": "price", "width": 15, "alignment": "right", "decimals": 4},
+        {"name": "status", "width": 12},
+        {"name": "orderDate", "width": 19}
+      ],
+      "trailer": "TRL + recordCount(10, right) + timestamp(19)"
+    },
+    "xmlSpec": {
+      "rootElement": "RegulatoryReport",
+      "firmName": "BIGCORP",
+      "dateFormat": "yyyy-MM-ddTHH:mm:ss"
+    },
+    "logTable": "REG_REPORT_LOG"
+  },
+  "notifications": {
+    "channels": ["EMAIL", "SMS", "FAX (deprecated 2002)"],
+    "maxRetryCount": 3,
+    "pollTimeoutMs": 5000,
+    "errorBackoffMs": 1000,
+    "emailTemplates": {
+      "ORDER_CONFIRM": "com/bigcorp/notifications/templates/order_confirm.xml",
+      "ORDER_REJECT": "com/bigcorp/notifications/templates/order_reject.xml",
+      "SETTLEMENT": "com/bigcorp/notifications/templates/settlement.xml",
+      "PRICE_ALERT": null
+    },
+    "templatePlaceholders": ["${orderId}", "${clientName}", "${subject}", "${symbol}", "${quantity}", "${side}", "${price}", "${reason}", "${amount}", "${settlementDate}"],
+    "bodyFormat": "pipe-delimited: symbol|quantity|side|price|reason|amount|settlementDate",
+    "htmlEmail": {
+      "enabled": true,
+      "brandColor": "#003366",
+      "footerText": "This is an automated message from BigCorp Trading Systems. Do not reply to this email. For questions, contact the trading desk."
+    },
+    "smsSenderTag": "BIGCORP",
+    "notificationIdFormats": {
+      "confirmation": "N-{orderId}-{timestamp}",
+      "rejection": "N-{orderId}-REJ-{timestamp}",
+      "settlement": "NOTIF-{timestamp}-{recordId.hashCode}"
+    }
+  },
+  "knownBugs": [
+    {
+      "id": "BUG-001",
+      "title": "Priority Comparator Reversed",
+      "jira": "JIRA-5300",
+      "description": "RuleEngine sorts rules in DESCENDING order by priority number (higher number runs first). System property bigcorp.rules.priority.fixed can fix this but defaults to false.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-002",
+      "title": "Inactive Rule Execute Bug",
+      "description": "Rules loaded from XML with active=false still get execute() called if they were already registered from a previous run. The XML active attribute is not applied to the Rule object.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-003",
+      "title": "MarketHoursRule Uses Server Local Time",
+      "description": "MarketHoursRule uses server local time instead of Eastern Time. Caused 6-month outage in 2001 when server clock was wrong.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-004",
+      "title": "T+3 Settlement Does Not Skip Weekends",
+      "jira": "JIRA-2890",
+      "description": "calculateSettlementDate() adds 3 calendar days without skipping weekends or holidays. Clearinghouse recalculates on their end.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-005",
+      "title": "Non-Thread-Safe Singleton",
+      "description": "RuleEngine.getInstance() is not thread-safe. Comment: 'It's fine, the app server is single-threaded.' (It isn't.)",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-006",
+      "title": "Redundant Order Saves",
+      "description": "Order is saved via both saveOrder() AND updateOrderStatus(). The second path exists because settlement batch reads from this update path.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-007",
+      "title": "Price Deviation Double-Check",
+      "jira": "JIRA-2456",
+      "description": "Price deviation is checked both in rule engine AND manually in OrderMessageListener. Manual check kept because 'it caught a bug once.'",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-008",
+      "title": "Notification INSERT-Only",
+      "description": "NotificationListener does INSERT-only to NOTIFICATIONS table. Retried notifications create duplicate rows.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-009",
+      "title": "Settlement Queue Phantom Dependency",
+      "description": "BIGCORP.SETTLEMENT.EVENTS queue was created for a cancelled project but cannot be removed because 'removing it breaks something in settlement (we don't know what).'",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-010",
+      "title": "Commission Rate Inconsistency",
+      "description": "PricingServiceImpl uses flat 0.015 rate while order-engine uses tier-based rates via CommissionCalculator. Documented as 'by design' but possibly a bug.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-011",
+      "title": "Hardcoded Fallback Prices",
+      "jira": "JIRA-1102",
+      "description": "PricingServiceImpl has hardcoded fallback prices from 2000-2001. Unknown symbols return default price (10.00/10.50/10.25) instead of failing.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-012",
+      "title": "FX Rates Duplicated in 3 Places",
+      "jira": "JIRA-7101",
+      "description": "FX rates copy-pasted in MultiCurrencyRule, FxPricingHelper, DerivativeProcessor. All hardcoded as of 2004-07-15. AUD/USD only in FxPricingHelper.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-013",
+      "title": "Partial Batch Not Implemented",
+      "jira": "JIRA-2890",
+      "description": "partialBatchMode flag exists in BatchProcessor but logic never completed. Partial batches can occur on midway failure with no rollback.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-014",
+      "title": "DailyVolumeTracker Table Unused in Hot Path",
+      "description": "DAILY_VOLUME_TRACKER table was created for cumulative daily volume tracking but only used for batch reporting, not real-time.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-015",
+      "title": "Reconciliation Reason Code Not Stored",
+      "jira": "JIRA-3522",
+      "description": "DAT reconciliation files include reason codes but SettlementRecord has no reasonCode field.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-016",
+      "title": "VolumeDiscountRule Uses Hardcoded Commission",
+      "jira": "JIRA-6001",
+      "description": "VolumeDiscountRule uses hardcoded 0.02 base commission instead of CommissionCalculator.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-017",
+      "title": "MultiCurrencyRule Uses Hardcoded Commission",
+      "jira": "JIRA-7103",
+      "description": "MultiCurrencyRule uses hardcoded 0.02 commission instead of CommissionCalculator.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-018",
+      "title": "LoyaltyBonus Hardcoded Client List",
+      "jira": "JIRA-6002",
+      "description": "LoyaltyBonusRule hardcodes tenure check for C001/C002/C003 rather than reading from database.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-019",
+      "title": "ShortSaleRule Not in XML Config",
+      "jira": "JIRA-4101",
+      "description": "ShortSaleRule is added manually after config-loaded rules, not in rules.xml.",
+      "preserveForBackwardCompatibility": true
+    },
+    {
+      "id": "BUG-020",
+      "title": "Weekend Orders Not Actually Queued",
+      "description": "MarketHoursRule sets queued=true attribute but no downstream code actually defers execution.",
+      "preserveForBackwardCompatibility": true
+    }
+  ]
+}
