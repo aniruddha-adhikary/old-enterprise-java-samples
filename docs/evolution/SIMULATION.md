@@ -37,6 +37,7 @@ Each wave represents a time period (roughly 1-2 years) and is attributed to a pe
 | 13 | 2019 Q1 | feature-rusher | Client portal API — hardcoded auth, copy-pasted queries, hand-built JSON |
 | 14 | 2021 Q1 | compliance-bolt-on | Regulatory reporting (MiFID/CAT-style) — fixed-width and XML exports, REG_REPORT_LOG |
 | 15 | 2023 Q1 | architect | Logging/observability cleanup — unified BigCorpLogger facade, migration documentation |
+| 16 | 2024 Q2 | contractor | Mainframe back-office integration via JCA resource adapter (connector/, .rar) |
 
 ## Verification Gate
 

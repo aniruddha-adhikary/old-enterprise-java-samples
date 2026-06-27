@@ -37,6 +37,13 @@ A multi-application Java project emulating late 1990s / early 2000s enterprise J
                              JDBC
                           /        \
                     AUDIT_LOG   BILLING_LEDGER
+
+  [order-engine]  ──CCI/TCP──>  [connector]  ──TCP──>  [Mainframe EIS (CICS)]
+                                     |                    (unreachable in demo)
+                                     | JDBC fallback
+                                     v
+                                  [HSQLDB]
+                                (CLIENTS table)
 ```
 
 ## Modules
@@ -50,6 +57,7 @@ A multi-application Java project emulating late 1990s / early 2000s enterprise J
 | **notification-gateway** | Standalone JMS consumer | JMS, JavaMail, HTTP | Email and SMS notification dispatch |
 | **settlement-gateway** | Batch processor | SFTP (JSch), JDBC, XML | End-of-day settlement file generation and SFTP transfer |
 | **audit-service** | Standalone JMS consumer | JMS, JDBC | Audit logging and billing ledger for order lifecycle events |
+| **connector** | Resource Adapter (.rar) | JCA / CCI (hand-rolled), JDBC fallback | Mainframe back-office account/credit verification via JCA resource adapter |
 
 ## Tech Stack
 
@@ -64,6 +72,7 @@ A multi-application Java project emulating late 1990s / early 2000s enterprise J
 - **JSch** (SFTP file transfer)
 - **XML** (DOM, SAX, and string concatenation approaches)
 - **Custom Rule Engine** (XML-configured business rules)
+- **JCA / J2EE Connector Architecture** — vendor resource adapter stand-in
 
 ## Prerequisites
 

@@ -596,6 +596,32 @@ ant run-demo
 
 ---
 
+## Phase 25: Wave 16 — JCA Connector / Mainframe Account Verification (contractor)
+
+Covers the JCA resource adapter (`connector/` module) and its integration into the order flow.
+
+### T25.1 — Connector module compiles
+**Action:** Build the project with `ant compile-connector`
+**Verify:** Compilation succeeds, `build/connector/` contains compiled classes
+
+### T25.2 — RAR artifact produced by ant package
+**Action:** Run `ant package`
+**Verify:** `dist/connector.rar` exists and contains `META-INF/ra.xml`
+
+### T25.3 — MainframeAccountService returns AccountRecord via DB fallback
+**Action:** Call `MainframeAccountService.verifyAccount("C001")`
+**Verify:** Returns non-null AccountRecord with accountNumber="C001", status="ACTIVE", creditLimit > 0
+
+### T25.4 — Order rejected when mainframe reports account suspended
+**Action:** Set KILL_SWITCH='Y' for a test client, submit order via the full order flow
+**Verify:** Order is rejected with reason containing "EIS account verification failed"
+
+### T25.5 — Order succeeds for active account through connector path
+**Action:** Submit order for an active client (KILL_SWITCH='N' or null)
+**Verify:** Order is FILLED (not rejected by the connector check)
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

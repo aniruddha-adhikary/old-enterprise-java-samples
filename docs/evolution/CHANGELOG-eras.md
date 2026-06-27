@@ -239,3 +239,22 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Remaining inconsistencies documented in class javadoc
 
 ---
+
+**Wave 16**
+
+- Mainframe back-office integration via JCA/CCI resource adapter (Apex Consulting contractor engagement, JIRA-7200)
+- New top-level module `connector/` with hand-rolled CCI-style API:
+  - MainframeConnectionFactory, MainframeConnection, MainframeInteraction (CCI surface)
+  - ResourceAdapterConfig reads from `connector/config/ra.properties` (vendor's own config convention, NOT from config/real/)
+  - ConnectorException (modeled after javax.resource.ResourceException)
+- AccountRecord value object deliberately overlaps with existing Client model (JIRA-7201 — vendor insists mainframe COBOL copybook is "source of truth")
+- MainframeAccountService facade for order-engine integration
+- Remote-with-DB-fallback pattern: tries TCP connect to CICS host, falls back to CLIENTS table via JDBC (same shape as PricingServiceClient)
+- Bolt-on integration in OrderMessageListener.processOrder(): after existing isActive() check, calls mainframe account verification; rejects if EIS reports SUSPENDED/CLOSED; tightens credit limit if mainframe limit is lower (JIRA-7202)
+- Existing DB-based client checks remain in place (dual validation, "belt and suspenders" per vendor recommendation)
+- Build: compile-connector target, rar-connector produces dist/connector.rar (JAR + META-INF/ra.xml descriptor)
+- Known issues:
+  - JIRA-7203: AccountRecord/Client model duplication should be unified — but mainframe team won't agree to a shared schema
+  - JIRA-7204: connector uses its own config directory (connector/config/) instead of config/real — vendor refused to follow project conventions
+
+---
