@@ -237,6 +237,32 @@ ant run-demo
 
 ---
 
+## Phase 10: Config-Driven Rule Loading
+
+### T10.1 — RuleConfigLoader parses rules.xml from classpath
+**Action:** Call RuleConfigLoader.loadRules()
+**Verify:** Returns non-empty list of Rule objects
+
+### T10.2 — Config loads exactly 4 expected rule types
+**Action:** Call RuleConfigLoader.loadRules() and check types
+**Verify:**
+- List contains exactly 4 rules
+- MaxOrderValueRule, ClientTierRule, MarketHoursRule, SpecialClientsRule all present
+
+### T10.3 — Config-loaded rules have correct priorities
+**Action:** Call RuleConfigLoader.loadRules() and check priorities
+**Verify:**
+- MaxOrderValue priority = 100
+- ClientTier priority = 90
+- MarketHours priority = 80
+- SpecialClients priority = 50
+
+### T10.4 — Rule engine evaluates correctly with config-loaded rules
+**Action:** Evaluate a valid order through the config-loaded rule engine
+**Verify:** Order passes all rules (same behavior as hardcoded)
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

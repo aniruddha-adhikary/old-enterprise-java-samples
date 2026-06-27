@@ -6,6 +6,7 @@ import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.model.TradeOrder;
 import com.bigcorp.common.mq.MessageQueueHelper;
 import com.bigcorp.common.rules.Rule;
+import com.bigcorp.common.rules.RuleConfigLoader;
 import com.bigcorp.common.rules.RuleContext;
 import com.bigcorp.common.rules.RuleEngine;
 import com.bigcorp.common.rules.impl.ClientTierRule;
@@ -24,6 +25,7 @@ import javax.jms.MessageConsumer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import java.util.Date;
+import java.util.List;
 
 /**
  * JMS message listener for incoming trade orders.
@@ -84,10 +86,25 @@ public class OrderMessageListener {
      */
     private void initRules() {
         System.out.println("Initializing rule engine...");
-        ruleEngine.addRule(new MaxOrderValueRule());
-        ruleEngine.addRule(new ClientTierRule());
-        ruleEngine.addRule(new MarketHoursRule());
-        ruleEngine.addRule(new SpecialClientsRule());
+
+        // Try loading rules from XML configuration first (externalized config)
+        List configRules = RuleConfigLoader.loadRules();
+
+        if (!configRules.isEmpty()) {
+            System.out.println("Using config-driven rule loading (" 
+                + configRules.size() + " rules from rules.xml)");
+            for (int i = 0; i < configRules.size(); i++) {
+                ruleEngine.addRule((Rule) configRules.get(i));
+            }
+        } else {
+            // Fall back to hardcoded rule registration
+            System.out.println("Using hardcoded rule registration (no config file found)");
+            ruleEngine.addRule(new MaxOrderValueRule());
+            ruleEngine.addRule(new ClientTierRule());
+            ruleEngine.addRule(new MarketHoursRule());
+            ruleEngine.addRule(new SpecialClientsRule());
+        }
+
         System.out.println("Rule engine initialized with " + ruleEngine.getRuleCount() + " rules");
     }
 

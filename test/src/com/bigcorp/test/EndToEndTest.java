@@ -7,6 +7,8 @@ import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.model.SettlementRecord;
 import com.bigcorp.common.model.TradeOrder;
 import com.bigcorp.common.mq.MessageQueueHelper;
+import com.bigcorp.common.rules.Rule;
+import com.bigcorp.common.rules.RuleConfigLoader;
 import com.bigcorp.common.rules.RuleContext;
 import com.bigcorp.common.rules.RuleEngine;
 import com.bigcorp.common.rules.impl.ClientTierRule;
@@ -117,6 +119,9 @@ public class EndToEndTest {
 
             // Phase 9: Enterprise Patterns (J2EE circa 2001)
             phase9_enterprisePatterns();
+
+            // Phase 10: Config-Driven Rule Loading
+            phase10_ruleConfig();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -1218,6 +1223,109 @@ public class EndToEndTest {
             }
         } catch (Exception e) {
             assertTest("T9.10", "Inbound reconciliation XML", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 10: Config-Driven Rule Loading
+    // ========================================================================
+
+    private static void phase10_ruleConfig() {
+        System.out.println("=== Phase 10: Config-Driven Rule Loading ===");
+        System.out.println();
+
+        // T10.1 - RuleConfigLoader can parse the config file
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            assertTest("T10.1", "RuleConfigLoader parses rules.xml from classpath",
+                rules != null && !rules.isEmpty(),
+                "rulesLoaded=" + (rules != null ? String.valueOf(rules.size()) : "0"));
+        } catch (Exception e) {
+            assertTest("T10.1", "RuleConfigLoader parse", false, e.getMessage());
+        }
+
+        // T10.2 - Loaded rules match expected 4 rules with correct types
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            boolean correctCount = (rules.size() == 4);
+
+            boolean hasMaxOrder = false;
+            boolean hasClientTier = false;
+            boolean hasMarketHours = false;
+            boolean hasSpecialClients = false;
+
+            for (int i = 0; i < rules.size(); i++) {
+                Rule rule = (Rule) rules.get(i);
+                if (rule instanceof MaxOrderValueRule) hasMaxOrder = true;
+                if (rule instanceof ClientTierRule) hasClientTier = true;
+                if (rule instanceof MarketHoursRule) hasMarketHours = true;
+                if (rule instanceof SpecialClientsRule) hasSpecialClients = true;
+            }
+
+            assertTest("T10.2", "Config loads exactly 4 expected rule types",
+                correctCount && hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients,
+                "count=" + rules.size() + ", maxOrder=" + hasMaxOrder
+                + ", clientTier=" + hasClientTier + ", marketHours=" + hasMarketHours
+                + ", specialClients=" + hasSpecialClients);
+        } catch (Exception e) {
+            assertTest("T10.2", "Rule type verification", false, e.getMessage());
+        }
+
+        // T10.3 - Loaded rules have correct priorities
+        try {
+            List rules = RuleConfigLoader.loadRules();
+            int[] expectedPriorities = {100, 90, 80, 50};
+            String[] expectedNames = {"MaxOrderValue", "ClientTier", "MarketHours", "SpecialClients"};
+            boolean allFound = true;
+
+            for (int j = 0; j < expectedNames.length; j++) {
+                boolean found = false;
+                for (int i = 0; i < rules.size(); i++) {
+                    Rule rule = (Rule) rules.get(i);
+                    if (rule.getName().equals(expectedNames[j])
+                        && rule.getPriority() == expectedPriorities[j]) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    allFound = false;
+                }
+            }
+
+            assertTest("T10.3", "Config-loaded rules have correct priorities (100, 90, 80, 50)",
+                allFound);
+        } catch (Exception e) {
+            assertTest("T10.3", "Rule priorities", false, e.getMessage());
+        }
+
+        // T10.4 - Rule engine still works correctly with config-loaded rules
+        try {
+            // The rule engine singleton is already loaded via OrderMessageListener.
+            // Verify it still evaluates a valid order correctly.
+            RuleEngine testEngine = RuleEngine.getInstance();
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("CONFIG-TEST-001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            boolean result = testEngine.evaluate(ctx);
+
+            assertTest("T10.4", "Rule engine evaluates correctly with config-loaded rules",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T10.4", "Config-loaded rule evaluation", false, e.getMessage());
         }
 
         System.out.println();

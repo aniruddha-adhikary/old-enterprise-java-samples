@@ -16,3 +16,15 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Known bugs carried forward: RuleEngine reversed-priority comparator, isActive() XML flag bug
 
 ---
+
+## 2003 Q1 — Externalized rule configuration — engineer: architect
+
+**Wave 1**
+
+- Created RuleConfigLoader in common-lib to load rules from XML config
+- Added config/rules.xml with the 4 existing rules and their priorities
+- Modified OrderMessageListener.initRules() to prefer config-driven loading with hardcoded fallback
+- Added test phase for config-driven rule loading
+- Deliberately left the RuleEngine isActive() XML bug in place
+
+---

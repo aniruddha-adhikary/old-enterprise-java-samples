@@ -126,6 +126,12 @@
                 <include name="**/*.xml"/>
             </fileset>
         </copy>
+        <!-- copy externalized rule configuration to build output -->
+        <copy todir="${build.dir}/common-lib" failonerror="false">
+            <fileset dir="config">
+                <include name="rules.xml"/>
+            </fileset>
+        </copy>
     </target>
 
     <!-- Classpath with common-lib compiled -->
