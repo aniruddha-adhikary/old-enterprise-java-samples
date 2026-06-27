@@ -14,6 +14,8 @@ import com.bigcorp.common.rules.RuleEngine;
 import com.bigcorp.common.rules.impl.ClientTierRule;
 import com.bigcorp.common.rules.impl.MarketHoursRule;
 import com.bigcorp.common.rules.impl.MaxOrderValueRule;
+import com.bigcorp.common.rules.impl.RestrictedSymbolRule;
+import com.bigcorp.common.rules.impl.ShortSaleRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
@@ -122,6 +124,9 @@ public class EndToEndTest {
 
             // Phase 10: Config-Driven Rule Loading
             phase10_ruleConfig();
+
+            // Phase 11: Per-Symbol Trading Restrictions
+            phase11_tradingRestrictions();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -1326,6 +1331,94 @@ public class EndToEndTest {
                 "passed=" + result);
         } catch (Exception e) {
             assertTest("T10.4", "Config-loaded rule evaluation", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 11: Per-Symbol Trading Restrictions
+    // ========================================================================
+
+    private static void phase11_tradingRestrictions() {
+        System.out.println("=== Phase 11: Per-Symbol Trading Restrictions ===");
+        System.out.println();
+
+        // T11.1 - RestrictedSymbolRule rejects a restricted symbol
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("RESTRICT-001");
+            order.setSymbol("ENRN");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(10.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            RestrictedSymbolRule rule = new RestrictedSymbolRule();
+            boolean result = rule.evaluate(ctx);
+            assertTest("T11.1", "RestrictedSymbolRule rejects ENRN",
+                !result && ctx.isRejected(),
+                "rejected=" + ctx.isRejected() + ", reason=" + ctx.getRejectionReason());
+        } catch (Exception e) {
+            assertTest("T11.1", "RestrictedSymbolRule rejection", false, e.getMessage());
+        }
+
+        // T11.2 - ShortSaleRule passes for a small SELL
+        try {
+            Client client = new Client();
+            client.setClientId("C003");
+            client.setTier(Client.TIER_SILVER);
+            client.setMaxOrderValue(250000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("SHORT-001");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_SELL);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ShortSaleRule rule = new ShortSaleRule();
+            boolean result = rule.evaluate(ctx);
+            assertTest("T11.2", "ShortSaleRule passes for 100-share SELL",
+                result && !ctx.isRejected(),
+                "passed=" + result);
+        } catch (Exception e) {
+            assertTest("T11.2", "ShortSaleRule small sell", false, e.getMessage());
+        }
+
+        // T11.3 - restricted_check attribute set on a passing order
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("RESTRICT-002");
+            order.setSymbol("MSFT");
+            order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            RestrictedSymbolRule rule = new RestrictedSymbolRule();
+            rule.evaluate(ctx);
+
+            Object restrictedCheck = ctx.getAttribute("restricted_check");
+            assertTest("T11.3", "restricted_check attribute set to 'passed' on non-restricted symbol",
+                "passed".equals(restrictedCheck),
+                "restricted_check=" + restrictedCheck);
+        } catch (Exception e) {
+            assertTest("T11.3", "restricted_check attribute", false, e.getMessage());
         }
 
         System.out.println();

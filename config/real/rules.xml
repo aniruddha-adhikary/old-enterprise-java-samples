@@ -16,6 +16,7 @@
 -->
 <rules>
   <rule class="com.bigcorp.common.rules.impl.MaxOrderValueRule" priority="100" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.RestrictedSymbolRule" priority="95" active="true"/>
   <rule class="com.bigcorp.common.rules.impl.ClientTierRule" priority="90" active="true"/>
   <rule class="com.bigcorp.common.rules.impl.MarketHoursRule" priority="80" active="true"/>
   <rule class="com.bigcorp.common.rules.impl.SpecialClientsRule" priority="50" active="true"/>

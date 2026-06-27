@@ -28,3 +28,16 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Deliberately left the RuleEngine isActive() XML bug in place
 
 ---
+
+## 2003 Q4 — Per-symbol trading restrictions — engineer: feature-rusher
+
+**Wave 2**
+
+- Added RestrictedSymbolRule with hardcoded restricted symbols (ENRN, WCOM, TYCO, ADLP) — TODO: move to database (JIRA-4100)
+- Added ShortSaleRule with hardcoded 1000-share limit and copy-pasted commission constant
+- RestrictedSymbolRule registered via XML config; ShortSaleRule hardcoded in initRules() (inconsistency — JIRA-4101)
+- New string-keyed attributes: restricted_check, short_sale_commission
+- Minimal test coverage (Phase 11: 3 tests)
+- Known issue: T10.2 now fails (expects 4 rules in config, but RestrictedSymbolRule makes it 5) — JIRA-4102
+
+---

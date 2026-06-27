@@ -12,6 +12,7 @@ import com.bigcorp.common.rules.RuleEngine;
 import com.bigcorp.common.rules.impl.ClientTierRule;
 import com.bigcorp.common.rules.impl.MarketHoursRule;
 import com.bigcorp.common.rules.impl.MaxOrderValueRule;
+import com.bigcorp.common.rules.impl.ShortSaleRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.orderengine.dao.OrderDAO;
@@ -104,6 +105,9 @@ public class OrderMessageListener {
             ruleEngine.addRule(new MarketHoursRule());
             ruleEngine.addRule(new SpecialClientsRule());
         }
+
+        // added manually, will add to XML config later (JIRA-4101)
+        ruleEngine.addRule(new ShortSaleRule());
 
         System.out.println("Rule engine initialized with " + ruleEngine.getRuleCount() + " rules");
     }
