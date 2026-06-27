@@ -41,3 +41,17 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Known issue: T10.2 now fails (expects 4 rules in config, but RestrictedSymbolRule makes it 5) — JIRA-4102
 
 ---
+
+## 2004 Q3 — New asset class: FX/options module — engineer: contractor
+
+**Wave 3**
+
+- Added derivatives-engine/ module with own package conventions (com.bigcorp.derivatives.*)
+- DerivativeOrder: own model class, not extending TradeOrder, own XML marshalling
+- DerivativeProcessor: own pricing logic, own commission rate (0.015 vs 0.02), does NOT use RuleEngine
+- FxPricingHelper: hardcoded FX rates, copy-paste of pricing logic
+- Own queue constants (BIGCORP.DERIVATIVES.ORDERS/CONFIRMS), own logger utility
+- New compile target in build.xml (compile-derivatives)
+- Minimal integration with common-lib (ConnectionHelper only)
+
+---

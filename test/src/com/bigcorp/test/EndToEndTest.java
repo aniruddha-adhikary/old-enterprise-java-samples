@@ -37,6 +37,11 @@ import com.bigcorp.common.dto.OrderTransferObject;
 import com.bigcorp.common.dto.SettlementTransferObject;
 import com.bigcorp.common.dto.TransferObjectAssembler;
 import com.bigcorp.settlement.reconciliation.ReconciliationProcessor;
+import com.bigcorp.derivatives.core.DerivativeOrder;
+import com.bigcorp.derivatives.core.DerivativeProcessor;
+import com.bigcorp.derivatives.core.FxPricingHelper;
+import com.bigcorp.derivatives.queue.DerivativeQueueConstants;
+import com.bigcorp.derivatives.util.DerivativeLogger;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 
@@ -127,6 +132,9 @@ public class EndToEndTest {
 
             // Phase 11: Per-Symbol Trading Restrictions
             phase11_tradingRestrictions();
+
+            // Phase 12: Derivatives Engine (contractor module)
+            phase12_derivativesEngine();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -1419,6 +1427,100 @@ public class EndToEndTest {
                 "restricted_check=" + restrictedCheck);
         } catch (Exception e) {
             assertTest("T11.3", "restricted_check attribute", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 12: Derivatives Engine
+    // ========================================================================
+
+    private static void phase12_derivativesEngine() {
+        System.out.println("=== Phase 12: Derivatives Engine (FX/Options) ===");
+        System.out.println();
+
+        // T12.1 - DerivativeOrder field round-trip via XML
+        try {
+            DerivativeOrder orig = new DerivativeOrder();
+            orig.setOrderId("DRV-001");
+            orig.setClientId("C001");
+            orig.setContractType(DerivativeOrder.TYPE_FX_SPOT);
+            orig.setUnderlying("EUR/USD");
+            orig.setStrikePrice(1.10);
+            orig.setQuantity(50000);
+            orig.setExpiry("2004-09-15");
+            orig.setStatus(DerivativeOrder.STATUS_NEW);
+            orig.setPremium(0.0);
+
+            String xml = orig.toXml();
+            DerivativeOrder parsed = DerivativeOrder.fromXml(xml);
+
+            boolean fieldsMatch = "DRV-001".equals(parsed.getOrderId())
+                    && "C001".equals(parsed.getClientId())
+                    && DerivativeOrder.TYPE_FX_SPOT.equals(parsed.getContractType())
+                    && "EUR/USD".equals(parsed.getUnderlying())
+                    && parsed.getStrikePrice() == 1.10
+                    && parsed.getQuantity() == 50000
+                    && "2004-09-15".equals(parsed.getExpiry())
+                    && DerivativeOrder.STATUS_NEW.equals(parsed.getStatus());
+
+            assertTest("T12.1", "[DERIV] DerivativeOrder XML round-trip preserves all fields",
+                fieldsMatch,
+                "orderId=" + parsed.getOrderId() + " type=" + parsed.getContractType()
+                    + " underlying=" + parsed.getUnderlying());
+        } catch (Exception e) {
+            assertTest("T12.1", "[DERIV] DerivativeOrder XML round-trip", false, e.getMessage());
+        }
+
+        // T12.2 - DerivativeProcessor processes a simple FX_SPOT order
+        try {
+            DerivativeProcessor proc = new DerivativeProcessor();
+
+            DerivativeOrder order = new DerivativeOrder();
+            order.setOrderId("DRV-002");
+            order.setClientId("C001");
+            order.setContractType(DerivativeOrder.TYPE_FX_SPOT);
+            order.setUnderlying("EUR/USD");
+            order.setStrikePrice(1.10);
+            order.setQuantity(10000);
+            order.setExpiry("2004-09-15");
+
+            DerivativeOrder result = proc.processOrder(order);
+
+            boolean filled = result != null
+                    && DerivativeOrder.STATUS_FILLED.equals(result.getStatus())
+                    && result.getPremium() > 0;
+
+            // expected premium: 10000 * 1.10 * 0.015 = 165.0
+            double expectedPremium = 10000 * 1.10 * 0.015;
+            boolean premiumCorrect = result != null
+                    && Math.abs(result.getPremium() - expectedPremium) < 0.01;
+
+            assertTest("T12.2", "[DERIV] FX_SPOT order processed -> FILLED, premium=" + expectedPremium,
+                filled && premiumCorrect,
+                result != null ? "status=" + result.getStatus() + " premium=" + result.getPremium() : "null result");
+        } catch (Exception e) {
+            assertTest("T12.2", "[DERIV] FX_SPOT order processing", false, e.getMessage());
+        }
+
+        // T12.3 - FxPricingHelper returns expected rates
+        try {
+            double eurRate = FxPricingHelper.getRate("EUR/USD");
+            double gbpRate = FxPricingHelper.getRate("GBP/USD");
+            double jpyRate = FxPricingHelper.getRate("JPY/USD");
+            double unknownRate = FxPricingHelper.getRate("XYZ/USD");
+
+            boolean ratesOk = eurRate == 1.10
+                    && gbpRate == 1.55
+                    && jpyRate == 0.009
+                    && unknownRate == -1.0;
+
+            assertTest("T12.3", "[DERIV] FxPricingHelper rates: EUR=1.10 GBP=1.55 JPY=0.009 unknown=-1",
+                ratesOk,
+                "EUR=" + eurRate + " GBP=" + gbpRate + " JPY=" + jpyRate + " XYZ=" + unknownRate);
+        } catch (Exception e) {
+            assertTest("T12.3", "[DERIV] FxPricingHelper rates", false, e.getMessage());
         }
 
         System.out.println();

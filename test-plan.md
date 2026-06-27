@@ -281,6 +281,28 @@ ant run-demo
 
 ---
 
+## Phase 12: Derivatives Engine (FX/Options — contractor module)
+
+### T12.1 — DerivativeOrder XML round-trip
+**Action:** Create DerivativeOrder with all fields, marshal to XML via toXml(), unmarshal via fromXml()
+**Verify:** All fields preserved (orderId, clientId, contractType, underlying, strikePrice, quantity, expiry, status)
+
+### T12.2 — DerivativeProcessor processes FX_SPOT order
+**Action:** Create FX_SPOT order (EUR/USD, 10000 qty, strike 1.10), call processOrder()
+**Verify:**
+- Status = FILLED
+- Premium = 10000 * 1.10 * 0.015 = 165.0 (FX commission rate)
+
+### T12.3 — FxPricingHelper returns expected rates
+**Action:** Call FxPricingHelper.getRate() for EUR/USD, GBP/USD, JPY/USD, and unknown pair
+**Verify:**
+- EUR/USD = 1.10
+- GBP/USD = 1.55
+- JPY/USD = 0.009
+- Unknown pair returns -1.0
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:
