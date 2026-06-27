@@ -1,5 +1,7 @@
 package com.bigcorp.settlement.batch;
 
+import com.bigcorp.common.billing.CommissionCalculator;
+import com.bigcorp.common.db.ConnectionHelper;
 import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.model.SettlementRecord;
 import com.bigcorp.common.model.TradeOrder;
@@ -9,6 +11,9 @@ import com.bigcorp.settlement.dao.SettlementDAO;
 import com.bigcorp.settlement.generator.SettlementFileGenerator;
 import com.bigcorp.settlement.sftp.SftpUploader;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -36,8 +41,8 @@ public class BatchProcessor {
     // batch sequence counter (resets daily in production, but we don't do that here)
     private static int batchSequence = 1;
 
-    // Commission rate (2% — set by compliance, do not change without approval)
-    private static final double COMMISSION_RATE = 0.02;
+    // JIRA-2501: commission rate now derived from client tier
+    // via CommissionCalculator (was hardcoded as 0.02)
 
     // partial batch mode flag (requested in JIRA-2890 but never fully implemented)
     private boolean partialBatchMode = false;
@@ -149,9 +154,10 @@ public class BatchProcessor {
         record.setQuantity(order.getQuantity());
         record.setSide(order.getSide());
 
-        // calculate amount and commission
+        // calculate amount and commission (tier-based via CommissionCalculator)
         double amount = order.getQuantity() * order.getPrice();
-        double commission = amount * COMMISSION_RATE;
+        String clientTier = lookupClientTier(order.getClientId());
+        double commission = CommissionCalculator.calculate(amount, clientTier);
         record.setAmount(amount);
         record.setCommission(commission);
 
@@ -210,6 +216,32 @@ public class BatchProcessor {
             SettlementRecord rec = (SettlementRecord) records.get(i);
             dao.updateSettlementStatus(rec.getRecordId(), status);
             rec.setStatus(status);
+        }
+    }
+
+    /**
+     * Look up client tier from the CLIENTS table.
+     */
+    private String lookupClientTier(String clientId) {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            ps = conn.prepareStatement("SELECT TIER FROM CLIENTS WHERE CLIENT_ID = ?");
+            ps.setString(1, clientId);
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("TIER");
+            }
+            return null;
+        } catch (Exception e) {
+            System.err.println("WARN: Could not look up tier for client " + clientId + ": " + e.getMessage());
+            return null;
+        } finally {
+            ConnectionHelper.closeQuietly(rs);
+            ConnectionHelper.closeQuietly(ps);
+            ConnectionHelper.closeQuietly(conn);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigcorp.orderengine.consumer;
 
+import com.bigcorp.common.billing.CommissionCalculator;
 import com.bigcorp.common.model.Client;
 import com.bigcorp.common.model.Notification;
 import com.bigcorp.common.model.TradeOrder;
@@ -48,9 +49,8 @@ import java.util.Date;
  */
 public class OrderMessageListener {
 
-    // hardcoded commission rate - JIRA-2501 says to make this configurable
-    // per client tier, but we haven't gotten to it yet
-    private static final double COMMISSION_RATE = 0.02;
+    // JIRA-2501: commission rate is now derived from client tier
+    // via CommissionCalculator (was hardcoded as 0.02)
 
     // poll interval in milliseconds
     // was 1000 but increased to 5000 after the CPU usage incident (JIRA-2340)
@@ -234,7 +234,7 @@ public class OrderMessageListener {
 
         // 6. fill the order
         double totalValue = order.getQuantity() * quotedPrice;
-        double commission = totalValue * COMMISSION_RATE;
+        double commission = CommissionCalculator.calculate(totalValue, client);
         // double netAmount = totalValue + commission; // not used yet - for settlement
 
         order.setPrice(quotedPrice);

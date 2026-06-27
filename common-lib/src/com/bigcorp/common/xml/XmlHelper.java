@@ -1,5 +1,6 @@
 package com.bigcorp.common.xml;
 
+import com.bigcorp.common.model.AuditEvent;
 import com.bigcorp.common.model.TradeOrder;
 import com.bigcorp.common.model.Notification;
 
@@ -185,6 +186,66 @@ public class XmlHelper {
             return notif;
         } catch (Exception e) {
             System.err.println("ERROR: Failed to unmarshal Notification XML: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Marshal an AuditEvent to XML string.
+     */
+    public static String marshalAuditEvent(AuditEvent event) {
+        try {
+            DocumentBuilder builder = dbFactory.newDocumentBuilder();
+            Document doc = builder.newDocument();
+
+            Element root = doc.createElement("auditEvent");
+            doc.appendChild(root);
+
+            appendElement(doc, root, "eventType", event.getEventType());
+            appendElement(doc, root, "sourceSystem", event.getSourceSystem());
+            appendElement(doc, root, "entityType", event.getEntityType());
+            appendElement(doc, root, "entityId", event.getEntityId());
+            if (event.getDescription() != null) {
+                appendElement(doc, root, "description", event.getDescription());
+            }
+            appendElement(doc, root, "logDate", formatDate(event.getLogDate()));
+            if (event.getUserId() != null) {
+                appendElement(doc, root, "userId", event.getUserId());
+            }
+
+            return documentToString(doc);
+        } catch (Exception e) {
+            System.err.println("WARN: Failed to marshal AuditEvent: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Unmarshal an AuditEvent from XML string.
+     */
+    public static AuditEvent unmarshalAuditEvent(String xml) {
+        try {
+            DocumentBuilder builder = dbFactory.newDocumentBuilder();
+            Document doc = builder.parse(new InputSource(new StringReader(xml)));
+            Element root = doc.getDocumentElement();
+
+            AuditEvent event = new AuditEvent();
+            event.setEventType(getElementText(root, "eventType"));
+            event.setSourceSystem(getElementText(root, "sourceSystem"));
+            event.setEntityType(getElementText(root, "entityType"));
+            event.setEntityId(getElementText(root, "entityId"));
+            event.setDescription(getElementText(root, "description"));
+            event.setUserId(getElementText(root, "userId"));
+
+            String dateStr = getElementText(root, "logDate");
+            if (dateStr != null && dateStr.length() > 0) {
+                event.setLogDate(parseDate(dateStr));
+            }
+
+            return event;
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to unmarshal AuditEvent XML: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
