@@ -7,16 +7,28 @@ description: Test the BigCorp Trade Order Management System end-to-end. Use when
 
 ## Overview
 
-This is a multi-module 1990s-era Java enterprise application with 6 modules (common-lib, trade-desk, order-engine, pricing-service, notification-gateway, settlement-gateway). Testing covers both embedded mode (HSQLDB + in-memory ActiveMQ) and real infrastructure mode (Oracle XE + standalone ActiveMQ + SFTP).
+This is a multi-module Java enterprise application with 8 modules (common-lib, trade-desk, order-engine, pricing-service, notification-gateway, settlement-gateway, audit-service, derivatives-engine). Testing covers both embedded mode (HSQLDB + in-memory ActiveMQ) and real infrastructure mode (Oracle XE + standalone ActiveMQ + SFTP).
 
 ## Devin Secrets Needed
 
-No secrets required. All infrastructure credentials are hardcoded in config files (era-appropriate for 90s enterprise Java):
+No secrets required. All infrastructure credentials are hardcoded in config files (era-appropriate for enterprise Java):
 - Oracle: `bigcorp_app` / `bigcorp_2002` on `localhost:1521/XEPDB1`
 - SFTP: `bigcorp_settle` / `settle_pass` on `localhost:2222`
 - ActiveMQ: default (no auth) on `localhost:61616`
 
 ## Prerequisites
+
+### Build Tool
+
+Apache Ant is required. Install if not present:
+```bash
+sudo apt-get install -y ant
+```
+
+Fetch dependencies first:
+```bash
+ant deps
+```
 
 ### Infrastructure (for real mode testing)
 
@@ -76,16 +88,41 @@ ant run-test
 # Real infrastructure mode (Oracle + ActiveMQ + SFTP via Docker)
 ant run-test-real
 
-# Clean build verification
+# Clean build + all tests (verification gate)
+ant verify
+
+# Clean build only
 ant clean compile
 ```
 
 ### Key Assertions to Verify
 
-- **Total test count:** Should be 44 (34 original + 10 pattern tests T9.1-T9.10)
-- **T9.5 (DAO Factory):** Should say "HSQLDB" in embedded mode, "Oracle" in real mode (proves auto-detection, not hardcoded)
-- **T9.3 (Connection Pool):** Should show `avail_before=5` (proves pool initialized with correct size)
-- **T9.9/T9.10 (Reconciliation):** In real mode, should show "Uploaded test recon file to SFTP" and "Downloaded reconciliation file" and "Updated record -> RECONCILED" (proves real SFTP round-trip)
+- **Total test count:** 80 tests across 16 phases (T1-T16)
+- **T10.1 (RuleConfigLoader):** Should show `rulesLoaded=12` (12 rules in config/rules.xml)
+- **T10.2 (Rule types):** Should show `count=12` — verifies all rule classes load correctly
+- **T14.3/T14.4 (Priority flag):** T14.3 should show `first_message=PASS: HighPri` (default descending); T14.4 should show `first_message=PASS: LowPri` (fixed ascending)
+- **T16.1/T16.2 (MarketHalt):** Circuit breaker passes when not halted, rejects with REG-2011-001 when halted
+- **T16.4/T16.5 (Audit):** RULE_AUDIT_LOG has entries after rule evaluation
+- **T9.5 (DAO Factory):** Should say "HSQLDB" in embedded mode, "Oracle" in real mode
+- **T9.3 (Connection Pool):** Should show `avail_before=5`
+- **T9.9/T9.10 (Reconciliation):** In real mode, should show SFTP round-trip
+
+### Rule Engine Testing
+
+The rule engine has intentional complexity from the evolution simulation:
+
+- **Priority comparator is reversed by default:** High priority number = runs first. This is an intentional bug. The `bigcorp.rules.priority.fixed` system property toggles to correct ascending order.
+- **ShortSaleRule is NOT in rules.xml:** It's hardcoded in `OrderMessageListener.initRules()` (Wave 2 intentional inconsistency). This is by design.
+- **Commission constants are duplicated:** `derivatives-engine` has its own `FX_COMMISSION=0.015` vs the centralized `CommissionCalculator` rates. `VolumeDiscountRule` has a copy-pasted `BASE_COMMISSION=0.02`.
+- **JIRA-6003 priority interaction bug:** `VolumeDiscountRule` (priority 55) and `SpecialClientsRule` (priority 50) both set commission-related attributes. Due to reversed comparator, VolumeDiscount runs first but SpecialClients overwrites `commission_override` — last-writer-wins.
+
+### Evolution Simulation Verification
+
+When testing changes to the evolution simulation:
+1. Check `docs/evolution/CHANGELOG-eras.md` has all wave entries (currently 8: Wave 0-7)
+2. Check `.agents/personas/` has 4 files: architect.md, feature-rusher.md, contractor.md, compliance-bolt-on.md
+3. Check `config/rules.xml` has 12 rules (MarketHalt through LoyaltyBonus)
+4. Verify `ant verify` passes — this is the verification gate from `docs/evolution/SIMULATION.md`
 
 ### Web UI URLs (when Tomcat is running)
 
@@ -102,7 +139,7 @@ ant clean compile
 ## Testing Strategy
 
 1. **Build verification first** (`ant clean compile`) - catches compilation issues fast
-2. **Embedded mode** (`ant run-test`) - no Docker dependency, verifies all logic works
+2. **Embedded mode** (`ant verify`) - no Docker dependency, verifies all logic works, runs the verification gate
 3. **Real infra mode** (`ant run-test-real`) - verifies Oracle SQL compatibility, real MQ, real SFTP
 4. **Web UI** (Tomcat + browser) - verifies Front Controller, Command pattern, Business Delegate through actual HTTP requests
 
@@ -112,3 +149,5 @@ ant clean compile
 - **Test data contamination:** If `ant run-test-real` fails with unique constraint violations, the test cleanup phase may have missed records from a previous run. The test harness cleans up `ORD-TEST-%` records at the start of each run, but if the schema was manually modified this might not work.
 - **Tomcat deployment issues:** If WAR doesn't auto-deploy, check `sudo journalctl -u tomcat9 --since "5 min ago"` for errors. The most common issue is the servlet-api conflict mentioned above.
 - **ActiveMQ port conflict:** If another process is using port 61616, the standalone ActiveMQ container won't start. Check with `ss -tlnp | grep 61616`.
+- **T8.1/T8.2 flakiness:** The concurrent order tests (T8.1, T8.2) may occasionally fail due to timing on slow VMs. Re-run `ant verify` — if they pass on retry, it's a timing flake.
+- **T10.2 rule count:** This test checks the number of rules in config/rules.xml. If you add/remove rules, update the assertion count in EndToEndTest.java.
