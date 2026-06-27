@@ -1,0 +1,757 @@
+{
+  "audit-service/src/com/bigcorp/audit/consumer/AuditListener.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "8b87b788d0cf87c9cd208b0f20c3c625",
+    "semantic_hash": ""
+  },
+  "audit-service/src/com/bigcorp/audit/dao/AuditDAO.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "28b8f257d48bb07a395bd7b7af4acda6",
+    "semantic_hash": ""
+  },
+  "audit-service/src/com/bigcorp/audit/dao/BillingDAO.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "60a1c83a0ddf75c1054864453ced2f3f",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/billing/CommissionCalculator.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "98c31bc48dba2d7b2378184f2039c8ce",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dao/BaseDAO.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "03e6c6c225128dbb78bdadb07d0ad00d",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dao/DAOInterface.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "90a83c0aec553fee2e7008325a8b8216",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/ConnectionHelper.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "d2fa7ae76a2e9f5efab0baca88130c31",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/ConnectionPool.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "63c823fcdd9ca75d403784249ee0b097",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/DAOFactory.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "6be3d3239954eef0535f396dd64b5835",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/DatabaseBootstrap.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "07f3d5a351135b8c970a786c1fea4bce",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/HsqldbDAOFactory.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "011f1262fa2542032513c1eb5ff0c1e4",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/db/OracleDAOFactory.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "6216cd42f8df204ac73bb8f92571fb67",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dto/NotificationTransferObject.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "480c5b8f15aeeb3cbd7af56c7b2973fe",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dto/OrderTransferObject.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "bed1dc83f6e29ec0fe2bd0e6c91f7713",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dto/SettlementTransferObject.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "3d270da94632b615a7d21306bd2a97e8",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/dto/TransferObjectAssembler.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "2d69bdbc3454db943cf1b59514f6bfed",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/logging/BigCorpLogger.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "701b1d9ceb59c079c2dad85529ffb882",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/model/AuditEvent.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "05f1d0c6a89083a6e76ca47136dc9fc9",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/model/Client.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "dec00546d487f4d745cc6d8f7123ce5c",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/model/Notification.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "74d927d7c03c021aee98e7e1eaddec2e",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/model/SettlementRecord.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "b1a43a0fb9090bc74c229c7d03cd4988",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/model/TradeOrder.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "8fb69d0eb83b6d6d0c0e4eff6fd6e247",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/mq/MessageQueueHelper.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "810feaec4c579648ee26ce218d5b3de4",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/Rule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "dffe69bfdba8e8562cc220e10ad1b4dc",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/RuleAuditLogger.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "300cb56995850ab7b48a6a20659e3fcd",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/RuleConfigLoader.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "72188358d2c5f9280fb96226a6d14e9d",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/RuleContext.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "396764bf41f25bb9c6dd4700069a4872",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/RuleEngine.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "181993d86ad021ba8147b58f16b18de1",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/RuleResult.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "b59bb51f498bd88069f3ea2d43485d85",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/SurveillanceAuditLogger.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "d349dbc35ab6e817c64a54c2679f1055",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/TypedRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "048f634901729c9fa83c660b5605745c",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/ClientKillSwitchRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "1a342a3b3526150cb6bb4e9b057c911f",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/ClientTierRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "67e8affa58f364f849363a1efd4f25c6",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/DailyVolumeLimitRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "da1b07932abc7c90afbbde4761642582",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/KYCStatusRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "e9c4a4c99b92d63ca735b3f220765862",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/LayeringDetectionRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "632e67f24f4850cf0639cb6efb44be00",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/LoyaltyBonusRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "fc343ec19bd38662ddc30543d42fb99d",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/MarketHaltRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "fe6bf67de9b10774a72d76398c4bd7bd",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/MarketHoursRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "0cb10148f86be8cd412dc241fcd9463c",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/MaxOrderValueRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "cfd4873f74d20b3832469a3e2ea83806",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/MultiCurrencyRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "332fc74137ca5b176fd2e9afddf1d1ce",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/PositionLimitRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "d6b1c46e531862940fdcafd92857a903",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/RestrictedSymbolRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "32e0e237a08b199df25b05b02971ae24",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/ShortSaleRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "3de1baa581ca9f4ddf46c16fb213f4f8",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/SpecialClientsRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "a528e99a2c63861dc37bfcad6128d773",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/SpoofingPatternRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "9b6a00d49466e22f370e4817b2cd8f90",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/VolumeDiscountRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "f017e49ba2dc4fa59b18ad563a31e9c6",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/rules/impl/WashTradeDetectionRule.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "0ae5bf5572f80c5b70a487b5e62cc545",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/service/ServiceLocator.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "79a320fc63058503e3b3433cb4e1003b",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/xml/StringXmlBuilder.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "898c289d7c30a74143a2b5f9ee6dfc13",
+    "semantic_hash": ""
+  },
+  "common-lib/src/com/bigcorp/common/xml/XmlHelper.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "37da2f83fd6d3f9ab882a1be441dc560",
+    "semantic_hash": ""
+  },
+  "demo/src/com/bigcorp/demo/DemoRunner.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "99d1902b7ec24298e47dfbbace47a5aa",
+    "semantic_hash": ""
+  },
+  "derivatives-engine/src/com/bigcorp/derivatives/core/DerivativeOrder.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "00cecd99b9aadf325d95f6045021369c",
+    "semantic_hash": ""
+  },
+  "derivatives-engine/src/com/bigcorp/derivatives/core/DerivativeProcessor.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "0e9bd11541eec336bb8aec0e398f802e",
+    "semantic_hash": ""
+  },
+  "derivatives-engine/src/com/bigcorp/derivatives/core/FxPricingHelper.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "44ba9bd41aa8cdbf9e32593318361a98",
+    "semantic_hash": ""
+  },
+  "derivatives-engine/src/com/bigcorp/derivatives/queue/DerivativeQueueConstants.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "7a359da68ee0ae7ffc3250ffef4ffe0f",
+    "semantic_hash": ""
+  },
+  "derivatives-engine/src/com/bigcorp/derivatives/util/DerivativeLogger.java": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "a2bae37840a64d3768912e94234a0d01",
+    "semantic_hash": ""
+  },
+  "infra/destroy-infra.sh": {
+    "mtime": 1782572603.9159362,
+    "ast_hash": "6c0ead8ac28e67bb507ca054e93c8896",
+    "semantic_hash": ""
+  },
+  "infra/load-schema.sh": {
+    "mtime": 1782572603.9159362,
+    "ast_hash": "3ac1a7a0c44c00391588dff5cc4eb488",
+    "semantic_hash": ""
+  },
+  "infra/start-infra.sh": {
+    "mtime": 1782572603.9159362,
+    "ast_hash": "e22d7df461843aa01bc2240f62f7a367",
+    "semantic_hash": ""
+  },
+  "infra/stop-infra.sh": {
+    "mtime": 1782572603.9159362,
+    "ast_hash": "f65128af9b567b97d049a411fc11e8a5",
+    "semantic_hash": ""
+  },
+  "joern-workspace/scripts/run-all.sh": {
+    "mtime": 1782573828.5159945,
+    "ast_hash": "5d851f06d476edfe45c412408ccc7cdc",
+    "semantic_hash": ""
+  },
+  "notification-gateway/src/com/bigcorp/notifications/consumer/DispatcherMain.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "10397ce7234a74b60a72ec47bf115eac",
+    "semantic_hash": ""
+  },
+  "notification-gateway/src/com/bigcorp/notifications/consumer/NotificationListener.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "ae3c8bb914d1deb2eaef37b2da6d2148",
+    "semantic_hash": ""
+  },
+  "notification-gateway/src/com/bigcorp/notifications/email/EmailDispatcher.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "ecdfc291956adcc1eebb3339fefd2772",
+    "semantic_hash": ""
+  },
+  "notification-gateway/src/com/bigcorp/notifications/sms/SMSDispatcher.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "9a31acb4bc5c5c861518d42e55644c55",
+    "semantic_hash": ""
+  },
+  "order-engine/src/com/bigcorp/orderengine/consumer/EngineMain.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "5e8efbbe150d75cbd70b36817a986c74",
+    "semantic_hash": ""
+  },
+  "order-engine/src/com/bigcorp/orderengine/consumer/OrderMessageListener.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "5953d622cb9ef8521ca28847cb0ec108",
+    "semantic_hash": ""
+  },
+  "order-engine/src/com/bigcorp/orderengine/dao/OrderDAO.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "c5e3edae4993e2a46db7b046161b2edd",
+    "semantic_hash": ""
+  },
+  "order-engine/src/com/bigcorp/orderengine/soap/PricingServiceClient.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "ed5ea6783a31d10e70eb5a3e57460f4c",
+    "semantic_hash": ""
+  },
+  "pricing-service/src/com/bigcorp/pricing/endpoint/PricingEndpointServlet.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "136a30d9e62a774774ee11d94d330e85",
+    "semantic_hash": ""
+  },
+  "pricing-service/src/com/bigcorp/pricing/service/PriceQuote.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "c4eceba0a8cecd5472c2789b78deb8b4",
+    "semantic_hash": ""
+  },
+  "pricing-service/src/com/bigcorp/pricing/service/PricingServiceImpl.java": {
+    "mtime": 1782572603.9359362,
+    "ast_hash": "08c525b6316eb291ef4b699959efe5d4",
+    "semantic_hash": ""
+  },
+  "reporting-service/src/com/bigcorp/reporting/config/ReportConfig.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "a3a12c3903f408a55f5c0b4466ce6654",
+    "semantic_hash": ""
+  },
+  "reporting-service/src/com/bigcorp/reporting/dao/ReportingDAO.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "4b0f56890818fcb81031ebc6b69d808e",
+    "semantic_hash": ""
+  },
+  "reporting-service/src/com/bigcorp/reporting/engine/ReportGenerator.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "3ae863254fea4b6f9137a8605108af8b",
+    "semantic_hash": ""
+  },
+  "reporting-service/src/com/bigcorp/reporting/template/ReportTemplateEngine.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "9968a3b3439cf232e8f75014e0dd71f5",
+    "semantic_hash": ""
+  },
+  "reporting-service/src/com/bigcorp/reporting/util/ReportLogger.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "2448b15cbbb8ec4efbc91cf7bbdf1b3b",
+    "semantic_hash": ""
+  },
+  "risk-engine/src/com/bigcorp/risk/dao/RiskDAO.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "5851de36b49e55c5eacdead9569d9191",
+    "semantic_hash": ""
+  },
+  "risk-engine/src/com/bigcorp/risk/engine/ExposureCalculator.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "94789c15c74cd8d788b4f518e4e40ac3",
+    "semantic_hash": ""
+  },
+  "risk-engine/src/com/bigcorp/risk/model/RiskOrder.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "135b8de51806dd54efdc0be84757a253",
+    "semantic_hash": ""
+  },
+  "risk-engine/src/com/bigcorp/risk/scheduler/RiskScheduler.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "077496057b95321e877a6a9dd3bc0ed8",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/batch/BatchProcessor.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "c3e8bc3b2592cd55966efb042ae07a04",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/batch/BatchScheduler.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "74cec8fff735ef57106d84558e420b01",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/dao/SettlementDAO.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "e7c88f4ae1951eb43e9b6732dc17c65b",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/generator/SettlementFileGenerator.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "956c26ca1fde9f491805386c6f1d10b3",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/reconciliation/DatReconciliationParser.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "8322d6dcef67ce9adcc40d878eb1e394",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/reconciliation/ReconciliationEntry.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "461ec9e80e7d341f6a57eff164f85601",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/reconciliation/ReconciliationProcessor.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "f3077e79b921caa728d1cae8ef8ea6a5",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/regulatory/RegulatoryExportJob.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "eb65ec303874bed55208af459d39a4c0",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/sftp/SftpPoller.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "034b0810fb52ba13afbd7b354319d53b",
+    "semantic_hash": ""
+  },
+  "settlement-gateway/src/com/bigcorp/settlement/sftp/SftpUploader.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "59801cfc615608dfc295a5ca45a4afa8",
+    "semantic_hash": ""
+  },
+  "sql/schema-oracle.sql": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "21ac0f3d95931a63f1a0f1560c6afdbb",
+    "semantic_hash": ""
+  },
+  "sql/schema.sql": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "d47a50a175bbc653163c892c58ca58c5",
+    "semantic_hash": ""
+  },
+  "test/src/com/bigcorp/test/EndToEndTest.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "3b1e550e5cb1d717444b3fcbceed673c",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/api/ClientPortalAPI.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "9e65a6551da0a7c7a2721fc94f453b0d",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/Command.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "4bd947574d9ba68ca7ba20b1c9e7be2a",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/CommandFactory.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "803a35f8124e8e691e9a9f8415442e6b",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/DashboardCommand.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "02468e85ffaff0800e0232505e9de298",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/ListOrdersCommand.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "ca648a3c77a1e7a23df9f023abac4062",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/SubmitOrderCommand.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "85c4382551feece0aa2c13f07cf83072",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/UnknownCommand.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "5050089096ee9cfb41664e0c2b7a31c4",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/command/ViewOrderStatusCommand.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "c3b35650bd5e2b301e4e6c28451f2725",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/controller/FrontControllerServlet.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "cd79a57a27576f898093f6d9b5ac09da",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/delegate/OrderServiceDelegate.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "1f8df342b710270ff1457da92f121556",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/filter/AuthenticationFilter.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "4f8531afd65d003c6a61c9c36f1343e7",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/filter/CharacterEncodingFilter.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "84b236bbf47734dbed0075471c4236ce",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/filter/RequestLoggingFilter.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "47406cf659f46be65196c3a1a675fe18",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/mq/TradeMessageProducer.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "61a06ded1dd5ac0174efe95fa2823fc2",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/servlet/OrderEntryServlet.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "df6a0597d81cd5b5a0b4b805c321bc79",
+    "semantic_hash": ""
+  },
+  "trade-desk/src/com/bigcorp/tradedesk/servlet/OrderStatusServlet.java": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "a4f09ea29dbb456bdedf86c4daaa5781",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg/project.json": {
+    "mtime": 1782573281.7359686,
+    "ast_hash": "7ddf9cb07cfbd572823762d849b87866",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg1/project.json": {
+    "mtime": 1782572934.519952,
+    "ast_hash": "3499bcd5ac2e5e9c1bb49d0fffef6c2d",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg10/project.json": {
+    "mtime": 1782573803.2879934,
+    "ast_hash": "87b0aa5fe81353216fc8d4529c722590",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg11/project.json": {
+    "mtime": 1782573811.6119938,
+    "ast_hash": "0991ce098afd180545afa9fe06bc8ab9",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg2/project.json": {
+    "mtime": 1782572942.8799524,
+    "ast_hash": "1feea4e62186093113f65d37c6ecc27e",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg3/project.json": {
+    "mtime": 1782572951.1119528,
+    "ast_hash": "4e1fcfefec5cba464b09b37b94258154",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg4/project.json": {
+    "mtime": 1782572959.5559533,
+    "ast_hash": "e4f817a8bb954069c8d5691a94835580",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg5/project.json": {
+    "mtime": 1782572967.9199536,
+    "ast_hash": "c210795897b0a9511036aeab760d601f",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg6/project.json": {
+    "mtime": 1782572976.059954,
+    "ast_hash": "466b94abc68abae765e974bb411e21fe",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg7/project.json": {
+    "mtime": 1782572984.4959543,
+    "ast_hash": "a5eebe900da77fe679803ad407a95ab7",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg8/project.json": {
+    "mtime": 1782573787.3559928,
+    "ast_hash": "2859bdb4ec724da2f2a31845449b6576",
+    "semantic_hash": ""
+  },
+  "workspace/bigcorp.cpg9/project.json": {
+    "mtime": 1782573795.4199932,
+    "ast_hash": "fb3008d5fe5a67cd4b5d364d78751e41",
+    "semantic_hash": ""
+  },
+  ".agents/personas/architect.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "3fc14326d7eb60ec5b2507658bfe955c",
+    "semantic_hash": ""
+  },
+  ".agents/personas/compliance-bolt-on.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "bda8922319ebb69f597db89fdc44d2c4",
+    "semantic_hash": ""
+  },
+  ".agents/personas/contractor.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "f3d4353976b3f8290c1c632a73e83f35",
+    "semantic_hash": ""
+  },
+  ".agents/personas/feature-rusher.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "1f2350645848c96a4fe418df87ce7738",
+    "semantic_hash": ""
+  },
+  ".agents/skills/testing-bigcorp-e2e/SKILL.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "b932299da9cd2170dfb17193b0f2b502",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "2356a8420072211201b2678abee7412e",
+    "semantic_hash": ""
+  },
+  "docs/evolution/CHANGELOG-eras.md": {
+    "mtime": 1782572603.9119363,
+    "ast_hash": "67daabf197b46815d194bda3e965f967",
+    "semantic_hash": ""
+  },
+  "docs/evolution/SIMULATION.md": {
+    "mtime": 1782572603.9159362,
+    "ast_hash": "ae96332a695fdad98cadefba237211f6",
+    "semantic_hash": ""
+  },
+  "joern-workspace/methodology/AGENT-PLAYBOOK.md": {
+    "mtime": 1782573111.2319605,
+    "ast_hash": "837a1fecde7bc18d6ddc1d1b85331516",
+    "semantic_hash": ""
+  },
+  "joern-workspace/methodology/EVALUATION-V1.md": {
+    "mtime": 1782573714.7639892,
+    "ast_hash": "82b9ceaffd1d302b614c0c76586366fb",
+    "semantic_hash": ""
+  },
+  "joern-workspace/methodology/RECONSTRUCTION-METHODOLOGY.md": {
+    "mtime": 1782573071.4639585,
+    "ast_hash": "0bec29b1d4f2f0ddf09480e653331e19",
+    "semantic_hash": ""
+  },
+  "joern-workspace/methodology/agent-prompt-v1.txt": {
+    "mtime": 1782573152.6079624,
+    "ast_hash": "52400848babae7ef9bed836aeae3ce69",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/01-explore-cpg.txt": {
+    "mtime": 1782573226.031966,
+    "ast_hash": "633cb037230a6a8394eddd3d7d2c18c2",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/02-domain-models.txt": {
+    "mtime": 1782573234.4519663,
+    "ast_hash": "f7c3f302d44b0b6b034c126e0ab21052",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/03-business-rules.txt": {
+    "mtime": 1782573242.6839666,
+    "ast_hash": "3e627e84bdd4c07168a5fc4b9b650c21",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/04-data-flows.txt": {
+    "mtime": 1782573251.003967,
+    "ast_hash": "6ca4bb5391b9f70f17bf33c250bb47f5",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/05-architectural-patterns.txt": {
+    "mtime": 1782573259.6319675,
+    "ast_hash": "6de8ef5898a1fe9076cd4195a9ef339f",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/06-commission-and-pricing.txt": {
+    "mtime": 1782573267.559968,
+    "ast_hash": "bf8cc35ce96eb75358c3b1bfee02fdb8",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/07-integration-topology.txt": {
+    "mtime": 1782573275.9359684,
+    "ast_hash": "1199e90323a2d4cfb3214c1c2e62d4f3",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/08-anomalies-and-debt.txt": {
+    "mtime": 1782573284.4959686,
+    "ast_hash": "4c55cf7a9910d894361898ec8a80c18b",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/09-jira-references.txt": {
+    "mtime": 1782573790.0799928,
+    "ast_hash": "1526348bcdccf30ddcfae1f09c058b2e",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/10-state-machines.txt": {
+    "mtime": 1782573798.0839932,
+    "ast_hash": "3da0948d44ad8fc1efc8e7e9dd5bde12",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/11-sql-schema.txt": {
+    "mtime": 1782573806.1639936,
+    "ast_hash": "092776985103a4772728edf90ffc2126",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/12-context-attributes.txt": {
+    "mtime": 1782573814.351994,
+    "ast_hash": "3bd8973d56cc27bf2c2da144d9a47627",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/RECONSTRUCTED-BUSINESS-LOGIC-V2.md": {
+    "mtime": 1782574269.9880157,
+    "ast_hash": "f79fc235bece0e4b8568c382fb3b2ce3",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/RECONSTRUCTED-BUSINESS-LOGIC.md": {
+    "mtime": 1782573639.6679857,
+    "ast_hash": "c92518c1c0ac859220c39e7448b4b663",
+    "semantic_hash": ""
+  },
+  "joern-workspace/output/combined-report.txt": {
+    "mtime": 1782573284.5479686,
+    "ast_hash": "8ce009c069f81ba12965e9f566562720",
+    "semantic_hash": ""
+  },
+  "test-plan.md": {
+    "mtime": 1782572603.9399362,
+    "ast_hash": "abaf71b3672fca6a4ee7d41558c93011",
+    "semantic_hash": ""
+  }
+}

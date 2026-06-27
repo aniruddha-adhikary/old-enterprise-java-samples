@@ -1,0 +1,23 @@
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  roots: ['<rootDir>/tests'],
+  testMatch: ['**/*.test.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/index.ts'],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov'],
+  moduleNameMapper: {
+    '^@domain/(.*)$': '<rootDir>/src/domain/$1',
+    '^@rules/(.*)$': '<rootDir>/src/rules/$1',
+    '^@settlement/(.*)$': '<rootDir>/src/settlement/$1',
+    '^@pricing/(.*)$': '<rootDir>/src/pricing/$1',
+    '^@notifications/(.*)$': '<rootDir>/src/notifications/$1',
+    '^@risk/(.*)$': '<rootDir>/src/risk/$1',
+    '^@derivatives/(.*)$': '<rootDir>/src/derivatives/$1',
+    '^@audit/(.*)$': '<rootDir>/src/audit/$1',
+    '^@regulatory/(.*)$': '<rootDir>/src/regulatory/$1',
+    '^@integration/(.*)$': '<rootDir>/src/integration/$1',
+    '^@api/(.*)$': '<rootDir>/src/api/$1',
+    '^@config/(.*)$': '<rootDir>/src/config/$1',
+  },
+};

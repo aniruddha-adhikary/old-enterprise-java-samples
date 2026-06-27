@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.js.map
+sftp-outbound/
+sftp-root/
+regulatory-output/

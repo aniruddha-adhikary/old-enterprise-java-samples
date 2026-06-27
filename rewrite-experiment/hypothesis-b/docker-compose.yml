@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://bigcorp:bigcorp_pass@postgres:5432/bigcorp
+      - AMQP_URL=amqp://rabbitmq:5672
+      - SFTP_HOST=sftp
+      - SFTP_PORT=22
+      - SFTP_USER=bigcorp_settle
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_FROM=noreply@bigcorp.com
+      - BIGCORP_RULES_PRIORITY_FIXED=false
+      - BIGCORP_MARKET_HALTED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=bigcorp
+      - POSTGRES_USER=bigcorp
+      - POSTGRES_PASSWORD=bigcorp_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bigcorp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=bigcorp
+      - RABBITMQ_DEFAULT_PASS=bigcorp_mq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  sftp:
+    image: atmoz/sftp:alpine
+    ports:
+      - "2222:22"
+    command: bigcorp_settle:settle_pass:::incoming,outgoing
+    volumes:
+      - sftpdata:/home/bigcorp_settle
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  pgdata:
+  sftpdata:

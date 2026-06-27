@@ -1,0 +1,277 @@
+=== GRAPHIFY EXPLAIN: Key Components ===
+
+--- EXPLAIN: TradeOrder ---
+Node: TradeOrder
+  ID:        model_tradeorder_tradeorder
+  Source:    common-lib/src/com/bigcorp/common/model/TradeOrder.java L16
+  Type:      code
+  Community: 1
+  Degree:    89
+
+Connections (89):
+  --> String [references] [EXTRACTED]
+  <-- RuleContext [references] [EXTRACTED]
+  --> Date [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .phase9_enterprisePatterns() [calls] [EXTRACTED]
+  <-- .fromTradeOrder() [references] [EXTRACTED]
+  <-- .phase14_wave5Cleanup() [calls] [EXTRACTED]
+  --> Serializable [implements] [EXTRACTED]
+  <-- .main() [calls] [EXTRACTED]
+  <-- .phase3_ruleEngine() [calls] [EXTRACTED]
+  <-- .phase16_wave7AuditAndCircuitBreakers() [calls] [EXTRACTED]
+  <-- .phase18_multiCurrencyAndSpecialClients() [calls] [EXTRACTED]
+  <-- .createBillingEntry() [references] [EXTRACTED]
+  <-- .getOrder() [references] [EXTRACTED]
+  <-- OrderMessageListener.java [imports] [EXTRACTED]
+  <-- .phase10_ruleConfig() [calls] [EXTRACTED]
+  <-- .phase13_complianceRules() [calls] [EXTRACTED]
+  <-- .phase19_tradeSurveillance() [calls] [EXTRACTED]
+  <-- .processOrderEvent() [references] [EXTRACTED]
+  <-- .phase11_tradingRestrictions() [calls] [EXTRACTED]
+  ... and 69 more
+
+--- EXPLAIN: RuleContext ---
+Node: RuleContext
+  ID:        rules_rulecontext_rulecontext
+  Source:    common-lib/src/com/bigcorp/common/rules/RuleContext.java L20
+  Type:      code
+  Community: 22
+  Degree:    88
+
+Connections (88):
+  --> String [references] [EXTRACTED]
+  --> TradeOrder [references] [EXTRACTED]
+  --> Client [references] [EXTRACTED]
+  --> List [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .phase14_wave5Cleanup() [calls] [EXTRACTED]
+  <-- .phase3_ruleEngine() [calls] [EXTRACTED]
+  <-- .phase16_wave7AuditAndCircuitBreakers() [calls] [EXTRACTED]
+  <-- .phase18_multiCurrencyAndSpecialClients() [calls] [EXTRACTED]
+  --> .getOrder() [method] [EXTRACTED]
+  <-- OrderMessageListener.java [imports] [EXTRACTED]
+  <-- .phase10_ruleConfig() [calls] [EXTRACTED]
+  <-- .phase13_complianceRules() [calls] [EXTRACTED]
+  <-- .phase19_tradeSurveillance() [calls] [EXTRACTED]
+  --> .getClient() [method] [EXTRACTED]
+  <-- .phase11_tradingRestrictions() [calls] [EXTRACTED]
+  <-- .phase15_wave6VolumeAndLoyalty() [calls] [EXTRACTED]
+  --> .addMessage() [method] [EXTRACTED]
+  --> .reject() [method] [EXTRACTED]
+  <-- .processOrder() [calls] [EXTRACTED]
+  ... and 68 more
+
+--- EXPLAIN: OrderMessageListener ---
+Node: OrderMessageListener
+  ID:        consumer_ordermessagelistener_ordermessagelistener
+  Source:    order-engine/src/com/bigcorp/orderengine/consumer/OrderMessageListener.java L56
+  Type:      code
+  Community: 1
+  Degree:    22
+
+Connections (22):
+  --> Connection [references] [EXTRACTED]
+  <-- EndToEndTest [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .main() [calls] [EXTRACTED]
+  <-- OrderMessageListener.java [contains] [EXTRACTED]
+  --> RuleEngine [references] [EXTRACTED]
+  --> .processOrder() [method] [EXTRACTED]
+  --> .rejectOrder() [method] [EXTRACTED]
+  <-- DemoRunner.java [imports] [EXTRACTED]
+  <-- .phase1_infrastructure() [calls] [EXTRACTED]
+  --> .initRules() [method] [EXTRACTED]
+  --> .sendRejectionNotification() [method] [EXTRACTED]
+  --> OrderDAO [references] [EXTRACTED]
+  --> .sendConfirmationNotification() [method] [EXTRACTED]
+  --> PricingServiceClient [references] [EXTRACTED]
+  --> .startListening() [method] [EXTRACTED]
+  --> .sendStatusUpdate() [method] [EXTRACTED]
+  --> Session [references] [EXTRACTED]
+  --> .cleanup() [method] [EXTRACTED]
+  --> .OrderMessageListener() [method] [EXTRACTED]
+  ... and 2 more
+
+--- EXPLAIN: BatchProcessor ---
+Node: BatchProcessor
+  ID:        batch_batchprocessor_batchprocessor
+  Source:    settlement-gateway/src/com/bigcorp/settlement/batch/BatchProcessor.java L35
+  Type:      code
+  Community: 5
+  Degree:    19
+
+Connections (19):
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .main() [calls] [EXTRACTED]
+  --> SettlementDAO [references] [EXTRACTED]
+  --> .processBatch() [method] [EXTRACTED]
+  <-- BatchProcessor.java [contains] [EXTRACTED]
+  <-- .phase8_multiOrder() [calls] [EXTRACTED]
+  --> .createSettlementRecord() [method] [EXTRACTED]
+  --> SettlementFileGenerator [references] [EXTRACTED]
+  <-- DemoRunner.java [imports] [EXTRACTED]
+  <-- .phase4_settlement() [calls] [EXTRACTED]
+  --> SftpUploader [references] [EXTRACTED]
+  --> .sendSettlementNotification() [method] [EXTRACTED]
+  <-- BatchScheduler [references] [EXTRACTED]
+  --> .updateRecordStatus() [method] [EXTRACTED]
+  --> .BatchProcessor() [method] [EXTRACTED]
+  --> .lookupClientTier() [method] [EXTRACTED]
+  <-- .BatchScheduler() [calls] [EXTRACTED]
+  --> .calculateSettlementDate() [method] [EXTRACTED]
+  --> .generateBatchId() [method] [EXTRACTED]
+
+--- EXPLAIN: CommissionCalculator ---
+Node: CommissionCalculator
+  ID:        billing_commissioncalculator_commissioncalculator
+  Source:    common-lib/src/com/bigcorp/common/billing/CommissionCalculator.java L21
+  Type:      code
+  Community: 21
+  Degree:    3
+
+Connections (3):
+  --> .calculate() [method] [EXTRACTED]
+  --> .getRate() [method] [EXTRACTED]
+  <-- CommissionCalculator.java [contains] [EXTRACTED]
+
+--- EXPLAIN: SettlementRecord ---
+Node: SettlementRecord
+  ID:        model_settlementrecord_settlementrecord
+  Source:    common-lib/src/com/bigcorp/common/model/SettlementRecord.java L13
+  Type:      code
+  Community: 6
+  Degree:    45
+
+Connections (45):
+  --> String [references] [EXTRACTED]
+  --> Date [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .fromSettlementRecord() [references] [EXTRACTED]
+  --> Serializable [implements] [EXTRACTED]
+  <-- BatchProcessor.java [imports] [EXTRACTED]
+  <-- .createSettlementRecord() [references] [EXTRACTED]
+  <-- SettlementFileGenerator.java [imports] [EXTRACTED]
+  <-- SftpPoller.java [imports] [EXTRACTED]
+  <-- SettlementDAO.java [imports] [EXTRACTED]
+  <-- .sendSettlementNotification() [references] [EXTRACTED]
+  <-- ReconciliationProcessor.java [imports] [EXTRACTED]
+  <-- .findPendingSettlements() [calls] [EXTRACTED]
+  <-- .saveSettlementRecord() [references] [EXTRACTED]
+  --> .getSettlementDate() [method] [EXTRACTED]
+  --> .getTradeDate() [method] [EXTRACTED]
+  <-- TransferObjectAssembler.java [imports] [EXTRACTED]
+  --> .setSettlementDate() [method] [EXTRACTED]
+  --> .setTradeDate() [method] [EXTRACTED]
+  <-- SettlementTransferObject.java [imports] [EXTRACTED]
+  ... and 25 more
+
+--- EXPLAIN: Client ---
+Node: Client
+  ID:        model_client_client
+  Source:    common-lib/src/com/bigcorp/common/model/Client.java L15
+  Type:      code
+  Community: 21
+  Degree:    53
+
+Connections (53):
+  --> String [references] [EXTRACTED]
+  <-- RuleContext [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .phase9_enterprisePatterns() [calls] [EXTRACTED]
+  <-- .phase14_wave5Cleanup() [calls] [EXTRACTED]
+  --> Serializable [implements] [EXTRACTED]
+  <-- .phase3_ruleEngine() [calls] [EXTRACTED]
+  <-- .phase16_wave7AuditAndCircuitBreakers() [calls] [EXTRACTED]
+  <-- .phase18_multiCurrencyAndSpecialClients() [calls] [EXTRACTED]
+  <-- OrderMessageListener.java [imports] [EXTRACTED]
+  <-- .phase10_ruleConfig() [calls] [EXTRACTED]
+  <-- .phase13_complianceRules() [calls] [EXTRACTED]
+  <-- .phase19_tradeSurveillance() [calls] [EXTRACTED]
+  <-- .getClient() [references] [EXTRACTED]
+  <-- .phase11_tradingRestrictions() [calls] [EXTRACTED]
+  <-- .phase15_wave6VolumeAndLoyalty() [calls] [EXTRACTED]
+  --> .setTier() [method] [EXTRACTED]
+  --> .setMaxOrderValue() [method] [EXTRACTED]
+  <-- .rejectOrder() [references] [EXTRACTED]
+  <-- .sendRejectionNotification() [references] [EXTRACTED]
+  ... and 33 more
+
+--- EXPLAIN: NotificationListener ---
+Node: NotificationListener
+  ID:        consumer_notificationlistener_notificationlistener
+  Source:    notification-gateway/src/com/bigcorp/notifications/consumer/NotificationListener.java L30
+  Type:      code
+  Community: 29
+  Degree:    15
+
+Connections (15):
+  <-- EndToEndTest [references] [EXTRACTED]
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .main() [calls] [EXTRACTED]
+  --> EmailDispatcher [references] [EXTRACTED]
+  --> .processNotification() [method] [EXTRACTED]
+  --> SMSDispatcher [references] [EXTRACTED]
+  <-- DemoRunner.java [imports] [EXTRACTED]
+  <-- .phase1_infrastructure() [calls] [EXTRACTED]
+  --> .saveNotification() [method] [EXTRACTED]
+  <-- .main() [calls] [EXTRACTED]
+  <-- NotificationListener.java [contains] [EXTRACTED]
+  --> .startListening() [method] [EXTRACTED]
+  --> .NotificationListener() [method] [EXTRACTED]
+  <-- DispatcherMain [references] [EXTRACTED]
+  --> .stop() [method] [EXTRACTED]
+
+--- EXPLAIN: PricingServiceImpl ---
+Node: PricingServiceImpl
+  ID:        service_pricingserviceimpl_pricingserviceimpl
+  Source:    pricing-service/src/com/bigcorp/pricing/service/PricingServiceImpl.java L25
+  Type:      code
+  Community: 7
+  Degree:    13
+
+Connections (13):
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- .phase9_enterprisePatterns() [calls] [EXTRACTED]
+  <-- PricingEndpointServlet [references] [EXTRACTED]
+  --> .lookupFromDatabase() [method] [EXTRACTED]
+  <-- PricingEndpointServlet.java [imports] [EXTRACTED]
+  --> .getHardcodedQuote() [method] [EXTRACTED]
+  <-- .phase7_pricingService() [calls] [EXTRACTED]
+  --> .applyTierSpread() [method] [EXTRACTED]
+  --> .getBatchQuotes() [method] [EXTRACTED]
+  --> .getQuote() [method] [EXTRACTED]
+  <-- .init() [calls] [EXTRACTED]
+  <-- PricingServiceImpl.java [contains] [EXTRACTED]
+  --> .calculateCommission() [method] [EXTRACTED]
+
+--- EXPLAIN: Rule ---
+Node: Rule
+  ID:        rules_rule_rule
+  Source:    common-lib/src/com/bigcorp/common/rules/Rule.java L13
+  Type:      code
+  Community: 15
+  Degree:    45
+
+Connections (45):
+  <-- EndToEndTest.java [imports] [EXTRACTED]
+  <-- OrderMessageListener.java [imports] [EXTRACTED]
+  <-- ShortSaleRule [implements] [EXTRACTED]
+  <-- SpecialClientsRule [implements] [EXTRACTED]
+  <-- ClientKillSwitchRule [implements] [EXTRACTED]
+  <-- KYCStatusRule [implements] [EXTRACTED]
+  <-- MarketHaltRule [implements] [EXTRACTED]
+  <-- MarketHoursRule [implements] [EXTRACTED]
+  <-- MaxOrderValueRule [implements] [EXTRACTED]
+  <-- MultiCurrencyRule [implements] [EXTRACTED]
+  <-- RestrictedSymbolRule [implements] [EXTRACTED]
+  <-- WashTradeDetectionRule [implements] [EXTRACTED]
+  <-- SimpleTestRule [implements] [EXTRACTED]
+  <-- ClientTierRule [implements] [EXTRACTED]
+  <-- DailyVolumeLimitRule [implements] [EXTRACTED]
+  <-- LayeringDetectionRule [implements] [EXTRACTED]
+  <-- LoyaltyBonusRule [implements] [EXTRACTED]
+  <-- PositionLimitRule [implements] [EXTRACTED]
+  <-- SpoofingPatternRule [implements] [EXTRACTED]
+  <-- VolumeDiscountRule [implements] [EXTRACTED]
+  ... and 25 more
