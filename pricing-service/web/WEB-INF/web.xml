@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE web-app PUBLIC 
+    "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN" 
+    "http://java.sun.com/dtd/web-app_2_3.dtd">
+<!--
+  BigCorp Pricing Service - Web Application Descriptor
+  
+  Deploys the SOAP endpoint for the pricing service.
+  Tested on: WebLogic 6.1, Tomcat 4.1
+  
+  Last updated: 2001-09-03 by Bob
+-->
+<web-app>
+
+    <display-name>BigCorp Pricing Service</display-name>
+    <description>
+        SOAP web service providing real-time price quotes for 
+        trade symbols. Part of the BigCorp Trade Order Management System.
+    </description>
+
+    <servlet>
+        <servlet-name>PricingEndpoint</servlet-name>
+        <servlet-class>com.bigcorp.pricing.endpoint.PricingEndpointServlet</servlet-class>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>PricingEndpoint</servlet-name>
+        <url-pattern>/services/PricingService</url-pattern>
+    </servlet-mapping>
+
+</web-app>

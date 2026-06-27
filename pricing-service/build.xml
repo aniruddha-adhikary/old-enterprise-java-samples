@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  pricing-service module build
+  Usually invoked from the master build.xml, but can also be run standalone.
+  
+  Author: Dave
+  Last updated: 2001-06-20
+-->
+<project name="bigcorp-pricing" default="compile" basedir=".">
+
+    <property file="../build.properties"/>
+    <property name="src.dir" value="src"/>
+    <property name="build.dir" value="../build/pricing-service"/>
+
+    <path id="compile.classpath">
+        <fileset dir="../${lib.dir}">
+            <include name="*.jar"/>
+        </fileset>
+        <pathelement location="../build/common-lib"/>
+    </path>
+
+    <target name="compile">
+        <mkdir dir="${build.dir}"/>
+        <javac srcdir="${src.dir}" destdir="${build.dir}"
+               source="${javac.source}" target="${javac.target}"
+               debug="true" includeantruntime="false">
+            <classpath refid="compile.classpath"/>
+        </javac>
+        <!-- copy WSDL files to output -->
+        <copy todir="${build.dir}">
+            <fileset dir=".">
+                <include name="wsdl/**"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+
+</project>

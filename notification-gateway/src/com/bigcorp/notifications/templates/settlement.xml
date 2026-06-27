@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Settlement Notification Email Template
+  BigCorp Trading Systems
+  
+  Placeholders:
+    ${orderId}        - The trade order ID
+    ${amount}         - Settlement amount
+    ${settlementDate} - Date of settlement
+    ${clientName}     - Client name/email
+-->
+<emailTemplate>
+  <body>
+Dear Valued Client,
+
+This notification confirms that settlement has been completed
+for the following trade:
+
+Settlement Details:
+  Order ID:         ${orderId}
+  Settlement Amount: $${amount}
+  Settlement Date:  ${settlementDate}
+
+The funds have been credited/debited to your account as per the
+standard settlement procedure. Please allow 1-2 business days
+for the transaction to appear in your account statement.
+
+For questions regarding this settlement or to request a detailed
+settlement report, please contact:
+
+  BigCorp Settlement Operations
+  Phone:  1-800-BIG-CORP ext. 4200
+  Email:  settlements@bigcorp.com
+
+Regards,
+BigCorp Settlement Operations
+
+---
+DISCLAIMER: This is an automated notification from BigCorp Trading
+Systems. Settlement amounts are subject to final reconciliation.
+Please refer to your official account statement for confirmed
+balances. Report any discrepancies within 5 business days.
+  </body>
+</emailTemplate>

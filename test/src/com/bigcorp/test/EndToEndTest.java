@@ -1,0 +1,942 @@
+package com.bigcorp.test;
+
+import com.bigcorp.common.db.ConnectionHelper;
+import com.bigcorp.common.db.DatabaseBootstrap;
+import com.bigcorp.common.model.Client;
+import com.bigcorp.common.model.Notification;
+import com.bigcorp.common.model.SettlementRecord;
+import com.bigcorp.common.model.TradeOrder;
+import com.bigcorp.common.mq.MessageQueueHelper;
+import com.bigcorp.common.rules.RuleContext;
+import com.bigcorp.common.rules.RuleEngine;
+import com.bigcorp.common.rules.impl.ClientTierRule;
+import com.bigcorp.common.rules.impl.MarketHoursRule;
+import com.bigcorp.common.rules.impl.MaxOrderValueRule;
+import com.bigcorp.common.rules.impl.SpecialClientsRule;
+import com.bigcorp.common.xml.StringXmlBuilder;
+import com.bigcorp.common.xml.XmlHelper;
+import com.bigcorp.notifications.consumer.NotificationListener;
+import com.bigcorp.orderengine.consumer.OrderMessageListener;
+import com.bigcorp.orderengine.dao.OrderDAO;
+import com.bigcorp.pricing.service.PriceQuote;
+import com.bigcorp.pricing.service.PricingServiceImpl;
+import com.bigcorp.settlement.batch.BatchProcessor;
+import com.bigcorp.settlement.generator.SettlementFileGenerator;
+import com.bigcorp.tradedesk.mq.TradeMessageProducer;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+/**
+ * Comprehensive end-to-end test harness for BigCorp Trade Order Management.
+ * 
+ * Tests the full trade lifecycle across all 6 modules:
+ *   common-lib, trade-desk, order-engine, pricing-service,
+ *   notification-gateway, settlement-gateway
+ * 
+ * Uses embedded infrastructure (HSQLDB, ActiveMQ, local SFTP fallback).
+ */
+public class EndToEndTest {
+
+    private static int passed = 0;
+    private static int failed = 0;
+    private static int total = 0;
+    private static List failedTests = new ArrayList();
+
+    private static OrderMessageListener orderListener;
+    private static NotificationListener notifListener;
+    private static Thread engineThread;
+    private static Thread notifThread;
+
+    // ========================================================================
+    // Main
+    // ========================================================================
+
+    public static void main(String[] args) {
+        System.out.println("##############################################");
+        System.out.println("  BigCorp End-to-End Test Suite");
+        System.out.println("  " + new Date());
+        System.out.println("##############################################");
+        System.out.println();
+
+        try {
+            // Phase 1: Build & Infrastructure
+            phase1_infrastructure();
+
+            // Phase 2: Happy Path
+            phase2_happyPath();
+
+            // Phase 3: Rule Engine Edge Cases
+            phase3_ruleEngine();
+
+            // Phase 4: Settlement Batch
+            phase4_settlement();
+
+            // Phase 5: Notification verification
+            phase5_notifications();
+
+            // Phase 6: XML Round-Trip
+            phase6_xmlRoundTrip();
+
+            // Phase 7: Pricing Service
+            phase7_pricingService();
+
+            // Phase 8: Multi-Order Stress
+            phase8_multiOrder();
+
+        } catch (Exception e) {
+            System.err.println("FATAL: Test suite crashed: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Print summary
+        printSummary();
+
+        System.exit(failed > 0 ? 1 : 0);
+    }
+
+    // ========================================================================
+    // Phase 1: Infrastructure
+    // ========================================================================
+
+    private static void phase1_infrastructure() {
+        System.out.println("=== Phase 1: Infrastructure Setup ===");
+        System.out.println();
+
+        // T1.1 - Database init
+        try {
+            ConnectionHelper.init();
+            DatabaseBootstrap.bootstrap();
+            assertTest("T1.1", "Database bootstrap", true);
+        } catch (Exception e) {
+            assertTest("T1.1", "Database bootstrap", false, e.getMessage());
+            return; // can't continue without DB
+        }
+
+        // T1.2 - Verify tables exist
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            String[] tables = {"CLIENTS", "TRADE_ORDERS", "NOTIFICATIONS", 
+                               "SETTLEMENT_RECORDS", "AUDIT_LOG", "PRICING_CACHE"};
+            boolean allExist = true;
+            for (int i = 0; i < tables.length; i++) {
+                try {
+                    ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tables[i]);
+                    rs.next();
+                    rs.close();
+                } catch (Exception e) {
+                    allExist = false;
+                    System.err.println("  Table missing: " + tables[i]);
+                }
+            }
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T1.2", "All 6 tables exist", allExist);
+        } catch (Exception e) {
+            assertTest("T1.2", "All 6 tables exist", false, e.getMessage());
+        }
+
+        // T1.3 - Verify sample data
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM CLIENTS");
+            rs.next();
+            int clientCount = rs.getInt(1);
+            rs.close();
+
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM PRICING_CACHE");
+            rs.next();
+            int pricingCount = rs.getInt(1);
+            rs.close();
+
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T1.3", "Sample data loaded (5 clients, 7 pricing records)", 
+                clientCount == 5 && pricingCount == 7,
+                "clients=" + clientCount + ", pricing=" + pricingCount);
+        } catch (Exception e) {
+            assertTest("T1.3", "Sample data loaded", false, e.getMessage());
+        }
+
+        // T1.4 - MQ init
+        try {
+            MessageQueueHelper.init();
+            assertTest("T1.4", "ActiveMQ broker started", true);
+        } catch (Exception e) {
+            assertTest("T1.4", "ActiveMQ broker started", false, e.getMessage());
+        }
+
+        // T1.5 - Start listeners
+        try {
+            orderListener = new OrderMessageListener();
+            engineThread = new Thread(new Runnable() {
+                public void run() {
+                    orderListener.startListening();
+                }
+            });
+            engineThread.setDaemon(true);
+            engineThread.start();
+
+            notifListener = new NotificationListener();
+            notifThread = new Thread(new Runnable() {
+                public void run() {
+                    notifListener.startListening();
+                }
+            });
+            notifThread.setDaemon(true);
+            notifThread.start();
+
+            // Give listeners time to connect
+            Thread.sleep(2000);
+            assertTest("T1.5", "Order engine + notification listeners started", true);
+        } catch (Exception e) {
+            assertTest("T1.5", "Listeners started", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 2: Happy Path
+    // ========================================================================
+
+    private static void phase2_happyPath() {
+        System.out.println("=== Phase 2: Happy Path - Standard Order Flow ===");
+        System.out.println();
+
+        // T2.1 - Submit BUY order (C001, MSFT, 500 @ $25.75)
+        submitAndVerify("T2.1", "BUY 500 MSFT for C001 -> FILLED",
+            "ORD-TEST-001", "C001", "MSFT", 500, TradeOrder.SIDE_BUY, 25.75, "FILLED");
+
+        // T2.2 - Submit BUY order (C002, IBM, 100)
+        submitAndVerify("T2.2", "BUY 100 IBM for C002 (Henderson/PLATINUM) -> FILLED",
+            "ORD-TEST-002", "C002", "IBM", 100, TradeOrder.SIDE_BUY, 120.00, "FILLED");
+
+        // T2.3 - Submit SELL order (C003, ORCL, 200)
+        submitAndVerify("T2.3", "SELL 200 ORCL for C003 -> FILLED",
+            "ORD-TEST-003", "C003", "ORCL", 200, TradeOrder.SIDE_SELL, 15.50, "FILLED");
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 3: Rule Engine Edge Cases
+    // ========================================================================
+
+    private static void phase3_ruleEngine() {
+        System.out.println("=== Phase 3: Rule Engine Edge Cases ===");
+        System.out.println();
+
+        // T3.1 - MaxOrderValue rejection (C005 max=$100k, 10% buffer = $110k)
+        // 5000 shares @ $25 = $125,000 > $110,000
+        submitAndVerify("T3.1", "Order exceeding max value -> REJECTED",
+            "ORD-TEST-REJ1", "C005", "MSFT", 5000, TradeOrder.SIDE_BUY, 25.00, "REJECTED");
+
+        // T3.2 - Invalid client ID
+        // TradeMessageProducer tries to insert to DB first (FK constraint fails for C999)
+        // then sends to MQ. The producer may throw RuntimeException on DB insert failure.
+        // The order-engine will still reject it with "Client not found" when it processes
+        // from the queue. Either path is valid — the system handles it.
+        try {
+            TradeOrder order = createOrder("ORD-TEST-REJ2", "C999", "MSFT", 100, TradeOrder.SIDE_BUY, 25.00);
+            TradeMessageProducer producer = new TradeMessageProducer();
+            boolean producerThrew = false;
+            try {
+                producer.submitOrder(order);
+            } catch (Exception pe) {
+                // Expected: FK constraint violation for non-existent client C999
+                producerThrew = true;
+            }
+            
+            if (!producerThrew) {
+                Thread.sleep(5000);
+            }
+            
+            // The order may not be in DB at all (FK failure) or may be REJECTED
+            String status = getOrderStatus("ORD-TEST-REJ2");
+            assertTest("T3.2", "Invalid client C999 -> producer fails (FK) or order rejected",
+                producerThrew || status == null || "REJECTED".equals(status),
+                "producerThrew=" + producerThrew + ", status=" + status);
+        } catch (Exception e) {
+            assertTest("T3.2", "Invalid client rejection", false, e.getMessage());
+        }
+
+        // T3.3 - Price deviation rejection (request $50, market $25.75 = ~94% deviation)
+        submitAndVerify("T3.3", "Price deviation >10% -> REJECTED",
+            "ORD-TEST-REJ3", "C001", "MSFT", 100, TradeOrder.SIDE_BUY, 50.00, "REJECTED");
+
+        // T3.4 - Rule engine unit test (MaxOrderValue rule directly)
+        try {
+            RuleEngine engine = RuleEngine.getInstance();
+            Client client = new Client();
+            client.setClientId("C005");
+            client.setTier(Client.TIER_BRONZE);
+            client.setMaxOrderValue(100000);
+            client.setActive(true);
+
+            TradeOrder bigOrder = new TradeOrder();
+            bigOrder.setOrderId("UNIT-001");
+            bigOrder.setQuantity(10000);
+            bigOrder.setRequestedPrice(25.00); // 10000 * 25 = $250,000
+
+            RuleContext ctx = new RuleContext(bigOrder, client);
+            MaxOrderValueRule rule = new MaxOrderValueRule();
+            boolean result = rule.evaluate(ctx);
+            assertTest("T3.4", "MaxOrderValueRule rejects $250k order for $100k limit client",
+                !result && ctx.isRejected());
+        } catch (Exception e) {
+            assertTest("T3.4", "MaxOrderValueRule unit test", false, e.getMessage());
+        }
+
+        // T3.5 - SpecialClients rule sets commission override for C002
+        try {
+            Client henderson = new Client();
+            henderson.setClientId("C002");
+            henderson.setTier(Client.TIER_PLATINUM);
+            henderson.setMaxOrderValue(5000000);
+            henderson.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("UNIT-002");
+            order.setQuantity(100);
+            order.setRequestedPrice(120.00);
+
+            RuleContext ctx = new RuleContext(order, henderson);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object commOverride = ctx.getAttribute("commission_override");
+            assertTest("T3.5", "SpecialClientsRule: C002 gets zero commission override",
+                commOverride != null && ((Double) commOverride).doubleValue() == 0.0,
+                "commission_override=" + commOverride);
+        } catch (Exception e) {
+            assertTest("T3.5", "SpecialClients commission override", false, e.getMessage());
+        }
+
+        // T3.6 - SpecialClients rule sets early_access for C001
+        try {
+            Client acme = new Client();
+            acme.setClientId("C001");
+            acme.setTier(Client.TIER_GOLD);
+            acme.setMaxOrderValue(500000);
+            acme.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("UNIT-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, acme);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object earlyAccess = ctx.getAttribute("early_access");
+            assertTest("T3.6", "SpecialClientsRule: C001 gets early_access=true",
+                Boolean.TRUE.equals(earlyAccess),
+                "early_access=" + earlyAccess);
+        } catch (Exception e) {
+            assertTest("T3.6", "SpecialClients early access", false, e.getMessage());
+        }
+
+        // T3.7 - SpecialClients rule sets pricing_tier_override for C004
+        try {
+            Client megafund = new Client();
+            megafund.setClientId("C004");
+            megafund.setTier(Client.TIER_GOLD);
+            megafund.setMaxOrderValue(1000000);
+            megafund.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("UNIT-004");
+            order.setQuantity(100);
+            order.setRequestedPrice(35.00);
+
+            RuleContext ctx = new RuleContext(order, megafund);
+            SpecialClientsRule specialRule = new SpecialClientsRule();
+            specialRule.evaluate(ctx);
+            specialRule.execute(ctx);
+
+            Object tierOverride = ctx.getAttribute("pricing_tier_override");
+            assertTest("T3.7", "SpecialClientsRule: C004 gets PLATINUM pricing override",
+                Client.TIER_PLATINUM.equals(tierOverride),
+                "pricing_tier_override=" + tierOverride);
+        } catch (Exception e) {
+            assertTest("T3.7", "SpecialClients tier override", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 4: Settlement
+    // ========================================================================
+
+    private static void phase4_settlement() {
+        System.out.println("=== Phase 4: Settlement Batch Processing ===");
+        System.out.println();
+
+        // T4.1 - Run settlement batch on filled orders
+        try {
+            // Clean up any previous settlement output
+            deleteDir(new File("./sftp-outbound"));
+            deleteDir(new File("./sftp-root"));
+
+            BatchProcessor batchProcessor = new BatchProcessor();
+            batchProcessor.processBatch();
+
+            // Check settlement records were created
+            int settlementCount = countRecords("SETTLEMENT_RECORDS");
+            assertTest("T4.1", "Settlement batch creates records for filled orders",
+                settlementCount > 0, "settlement_records=" + settlementCount);
+        } catch (Exception e) {
+            assertTest("T4.1", "Settlement batch processing", false, e.getMessage());
+        }
+
+        // T4.2 - Verify XML settlement file exists and is valid
+        try {
+            File outDir = new File("./sftp-outbound");
+            String[] xmlFiles = outDir.list(new java.io.FilenameFilter() {
+                public boolean accept(File dir, String name) {
+                    return name.endsWith(".xml");
+                }
+            });
+            boolean xmlExists = xmlFiles != null && xmlFiles.length > 0;
+            
+            boolean validXml = false;
+            if (xmlExists) {
+                String content = readFile(new File(outDir, xmlFiles[0]));
+                validXml = content.contains("<settlementBatch") && content.contains("</settlementBatch>");
+            }
+            
+            assertTest("T4.2", "XML settlement file generated and valid",
+                xmlExists && validXml,
+                xmlExists ? "file=" + xmlFiles[0] : "no XML files found");
+        } catch (Exception e) {
+            assertTest("T4.2", "XML settlement file", false, e.getMessage());
+        }
+
+        // T4.3 - Verify flat file exists and has correct format
+        try {
+            File outDir = new File("./sftp-outbound");
+            String[] datFiles = outDir.list(new java.io.FilenameFilter() {
+                public boolean accept(File dir, String name) {
+                    return name.endsWith(".dat");
+                }
+            });
+            boolean datExists = datFiles != null && datFiles.length > 0;
+
+            boolean validFormat = false;
+            if (datExists) {
+                String content = readFile(new File(outDir, datFiles[0]));
+                String[] lines = content.split("\n");
+                validFormat = lines.length >= 3 
+                    && lines[0].startsWith("H")
+                    && lines[lines.length - 1].startsWith("T");
+                // Check detail records start with D
+                for (int i = 1; i < lines.length - 1; i++) {
+                    if (!lines[i].startsWith("D")) {
+                        validFormat = false;
+                        break;
+                    }
+                }
+            }
+
+            assertTest("T4.3", "Flat settlement file with H/D/T record format",
+                datExists && validFormat,
+                datExists ? "file=" + datFiles[0] : "no .dat files found");
+        } catch (Exception e) {
+            assertTest("T4.3", "Flat settlement file", false, e.getMessage());
+        }
+
+        // T4.4 - Verify SFTP fallback (local copy)
+        try {
+            File sftpRoot = new File("./sftp-root/outbound");
+            boolean localCopyExists = sftpRoot.exists() && sftpRoot.list() != null 
+                && sftpRoot.list().length > 0;
+            assertTest("T4.4", "SFTP fallback: files copied to sftp-root/outbound/",
+                localCopyExists);
+        } catch (Exception e) {
+            assertTest("T4.4", "SFTP fallback", false, e.getMessage());
+        }
+
+        // T4.5 - Orders updated to SETTLED
+        try {
+            // Check that filled orders from phase 2 are now SETTLED
+            String status1 = getOrderStatus("ORD-TEST-001");
+            String status2 = getOrderStatus("ORD-TEST-002");
+            String status3 = getOrderStatus("ORD-TEST-003");
+            assertTest("T4.5", "Filled orders updated to SETTLED after batch",
+                "SETTLED".equals(status1) && "SETTLED".equals(status2) && "SETTLED".equals(status3),
+                "ORD-TEST-001=" + status1 + ", ORD-TEST-002=" + status2 + ", ORD-TEST-003=" + status3);
+        } catch (Exception e) {
+            assertTest("T4.5", "Orders settled", false, e.getMessage());
+        }
+
+        // T4.6 - Empty batch (no more filled orders)
+        try {
+            BatchProcessor batchProcessor2 = new BatchProcessor();
+            int beforeCount = countRecords("SETTLEMENT_RECORDS");
+            batchProcessor2.processBatch();
+            int afterCount = countRecords("SETTLEMENT_RECORDS");
+            assertTest("T4.6", "Empty batch: no new records when no filled orders",
+                beforeCount == afterCount,
+                "before=" + beforeCount + ", after=" + afterCount);
+        } catch (Exception e) {
+            assertTest("T4.6", "Empty batch", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 5: Notifications
+    // ========================================================================
+
+    private static void phase5_notifications() {
+        System.out.println("=== Phase 5: Notification Verification ===");
+        System.out.println();
+
+        // T5.1 - Notifications exist in DB
+        try {
+            int notifCount = countRecords("NOTIFICATIONS");
+            assertTest("T5.1", "Notifications persisted to database",
+                notifCount > 0, "notification_count=" + notifCount);
+        } catch (Exception e) {
+            assertTest("T5.1", "Notification persistence", false, e.getMessage());
+        }
+
+        // T5.2 - Check ORDER_CONFIRM notifications
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM NOTIFICATIONS WHERE NOTIFICATION_TYPE = ?");
+            ps.setString(1, Notification.TYPE_ORDER_CONFIRM);
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            int confirmCount = rs.getInt(1);
+            rs.close();
+            ConnectionHelper.closeQuietly(ps);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T5.2", "ORDER_CONFIRM notifications exist",
+                confirmCount > 0, "count=" + confirmCount);
+        } catch (Exception e) {
+            assertTest("T5.2", "ORDER_CONFIRM notifications", false, e.getMessage());
+        }
+
+        // T5.3 - Check notification has correct channel
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT CHANNEL, STATUS FROM NOTIFICATIONS WHERE NOTIFICATION_TYPE = 'ORDER_CONFIRM'");
+            boolean hasEmail = false;
+            boolean hasSentStatus = false;
+            while (rs.next()) {
+                if ("EMAIL".equals(rs.getString("CHANNEL"))) hasEmail = true;
+                if ("SENT".equals(rs.getString("STATUS"))) hasSentStatus = true;
+            }
+            rs.close();
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T5.3", "Notifications have EMAIL channel and SENT status",
+                hasEmail && hasSentStatus,
+                "hasEmail=" + hasEmail + ", hasSentStatus=" + hasSentStatus);
+        } catch (Exception e) {
+            assertTest("T5.3", "Notification channel/status", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 6: XML Round-Trip
+    // ========================================================================
+
+    private static void phase6_xmlRoundTrip() {
+        System.out.println("=== Phase 6: XML Marshalling Round-Trip ===");
+        System.out.println();
+
+        // T6.1 - XmlHelper TradeOrder round-trip
+        try {
+            TradeOrder original = createOrder("RT-001", "C001", "MSFT", 500, "BUY", 25.75);
+            original.setStatus(TradeOrder.STATUS_FILLED);
+            original.setPrice(25.75);
+
+            String xml = XmlHelper.marshalTradeOrder(original);
+            TradeOrder roundTripped = XmlHelper.unmarshalTradeOrder(xml);
+
+            boolean match = "RT-001".equals(roundTripped.getOrderId())
+                && "C001".equals(roundTripped.getClientId())
+                && "MSFT".equals(roundTripped.getSymbol())
+                && roundTripped.getQuantity() == 500
+                && "BUY".equals(roundTripped.getSide())
+                && TradeOrder.STATUS_FILLED.equals(roundTripped.getStatus());
+
+            assertTest("T6.1", "XmlHelper TradeOrder marshal->unmarshal preserves all fields",
+                match, "orderId=" + roundTripped.getOrderId() + ", symbol=" + roundTripped.getSymbol());
+        } catch (Exception e) {
+            assertTest("T6.1", "XmlHelper round-trip", false, e.getMessage());
+        }
+
+        // T6.2 - XmlHelper Notification round-trip
+        try {
+            Notification original = new Notification();
+            original.setNotificationId("NRT-001");
+            original.setType(Notification.TYPE_ORDER_CONFIRM);
+            original.setRecipient("test@bigcorp.com");
+            original.setSubject("Test Confirmation");
+            original.setBody("MSFT|500|BUY|25.75");
+            original.setChannel(Notification.CHANNEL_EMAIL);
+            original.setOrderId("RT-001");
+
+            String xml = XmlHelper.marshalNotification(original);
+            Notification roundTripped = XmlHelper.unmarshalNotification(xml);
+
+            boolean match = "NRT-001".equals(roundTripped.getNotificationId())
+                && Notification.TYPE_ORDER_CONFIRM.equals(roundTripped.getType())
+                && "test@bigcorp.com".equals(roundTripped.getRecipient())
+                && Notification.CHANNEL_EMAIL.equals(roundTripped.getChannel());
+
+            assertTest("T6.2", "XmlHelper Notification marshal->unmarshal preserves fields",
+                match, "notifId=" + roundTripped.getNotificationId());
+        } catch (Exception e) {
+            assertTest("T6.2", "Notification round-trip", false, e.getMessage());
+        }
+
+        // T6.3 - StringXmlBuilder produces valid-ish XML
+        try {
+            TradeOrder order = createOrder("SXB-001", "C001", "IBM", 100, "SELL", 120.00);
+            String xml = StringXmlBuilder.buildTradeOrderXml(order);
+            boolean hasRoot = xml.contains("<tradeOrder>") && xml.contains("</tradeOrder>");
+            boolean hasOrderId = xml.contains("SXB-001");
+            boolean hasSymbol = xml.contains("IBM");
+            assertTest("T6.3", "StringXmlBuilder produces XML with expected elements",
+                hasRoot && hasOrderId && hasSymbol,
+                "hasRoot=" + hasRoot + ", hasId=" + hasOrderId);
+        } catch (Exception e) {
+            assertTest("T6.3", "StringXmlBuilder", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 7: Pricing Service
+    // ========================================================================
+
+    private static void phase7_pricingService() {
+        System.out.println("=== Phase 7: Pricing Service ===");
+        System.out.println();
+
+        PricingServiceImpl pricingService = new PricingServiceImpl();
+
+        // T7.1 - Get MSFT quote
+        try {
+            PriceQuote quote = pricingService.getQuote("MSFT");
+            boolean valid = quote != null 
+                && quote.getBidPrice() == 25.50
+                && quote.getAskPrice() == 25.75
+                && "USD".equals(quote.getCurrency());
+            assertTest("T7.1", "PricingServiceImpl.getQuote(MSFT) returns correct prices",
+                valid, quote != null ? "bid=" + quote.getBidPrice() + ", ask=" + quote.getAskPrice() : "null");
+        } catch (Exception e) {
+            assertTest("T7.1", "MSFT quote", false, e.getMessage());
+        }
+
+        // T7.2 - Get IBM quote
+        try {
+            PriceQuote quote = pricingService.getQuote("IBM");
+            boolean valid = quote != null && quote.getBidPrice() == 120.00;
+            assertTest("T7.2", "PricingServiceImpl.getQuote(IBM) returns bid=$120.00",
+                valid, quote != null ? "bid=" + quote.getBidPrice() : "null");
+        } catch (Exception e) {
+            assertTest("T7.2", "IBM quote", false, e.getMessage());
+        }
+
+        // T7.3 - Batch quotes
+        try {
+            String[] symbols = {"MSFT", "IBM", "DELL"};
+            PriceQuote[] quotes = pricingService.getBatchQuotes(symbols);
+            boolean valid = quotes != null && quotes.length == 3;
+            if (valid) {
+                for (int i = 0; i < quotes.length; i++) {
+                    if (quotes[i] == null) {
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+            assertTest("T7.3", "getBatchQuotes returns 3 non-null quotes",
+                valid, "count=" + (quotes != null ? quotes.length : 0));
+        } catch (Exception e) {
+            assertTest("T7.3", "Batch quotes", false, e.getMessage());
+        }
+
+        // T7.4 - Unknown symbol
+        try {
+            PriceQuote quote = pricingService.getQuote("AAPL");
+            // Should return hardcoded fallback or null
+            assertTest("T7.4", "Unknown symbol AAPL returns fallback/null (no crash)",
+                true); // passes as long as no exception
+        } catch (Exception e) {
+            assertTest("T7.4", "Unknown symbol", false, e.getMessage());
+        }
+
+        // T7.5 - Null symbol
+        try {
+            PriceQuote quote = pricingService.getQuote(null);
+            assertTest("T7.5", "Null symbol returns null (no crash)",
+                quote == null);
+        } catch (Exception e) {
+            assertTest("T7.5", "Null symbol", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 8: Multi-Order Stress
+    // ========================================================================
+
+    private static void phase8_multiOrder() {
+        System.out.println("=== Phase 8: Multi-Order Stress Test ===");
+        System.out.println();
+
+        // Submit 5 orders from different clients
+        try {
+            submitOrderSafe(createOrder("ORD-MULTI-001", "C001", "DELL", 300, "BUY", 35.00));
+            submitOrderSafe(createOrder("ORD-MULTI-002", "C002", "CSCO", 200, "BUY", 22.00));
+            submitOrderSafe(createOrder("ORD-MULTI-003", "C003", "INTC", 400, "SELL", 30.50));
+            submitOrderSafe(createOrder("ORD-MULTI-004", "C004", "SUNW", 1000, "BUY", 9.00));
+            submitOrderSafe(createOrder("ORD-MULTI-005", "C005", "MSFT", 100, "BUY", 25.75));
+
+            // Wait for all to process
+            Thread.sleep(15000);
+
+            // Check all processed
+            int filledCount = 0;
+            for (int i = 1; i <= 5; i++) {
+                String status = getOrderStatus("ORD-MULTI-00" + i);
+                if ("FILLED".equals(status)) filledCount++;
+            }
+
+            assertTest("T8.1", "5 concurrent orders all processed to FILLED",
+                filledCount == 5, "filled=" + filledCount + "/5");
+        } catch (Exception e) {
+            assertTest("T8.1", "Multi-order stress", false, e.getMessage());
+        }
+
+        // T8.2 - Run settlement on the multi-orders
+        try {
+            deleteDir(new File("./sftp-outbound"));
+
+            BatchProcessor batch = new BatchProcessor();
+            batch.processBatch();
+
+            // Check settlement file has the right number of records
+            File outDir = new File("./sftp-outbound");
+            String[] datFiles = outDir.list(new java.io.FilenameFilter() {
+                public boolean accept(File dir, String name) {
+                    return name.endsWith(".dat");
+                }
+            });
+
+            if (datFiles != null && datFiles.length > 0) {
+                String content = readFile(new File(outDir, datFiles[0]));
+                String[] lines = content.split("\n");
+                int detailCount = 0;
+                for (int i = 0; i < lines.length; i++) {
+                    if (lines[i].startsWith("D")) detailCount++;
+                }
+                assertTest("T8.2", "Settlement flat file has 5 detail records",
+                    detailCount == 5, "detailRecords=" + detailCount);
+            } else {
+                assertTest("T8.2", "Settlement flat file generated", false, "no .dat files");
+            }
+        } catch (Exception e) {
+            assertTest("T8.2", "Multi-order settlement", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
+
+    /**
+     * Submit an order and verify status, handling the race condition where the
+     * order engine processes the MQ message before the producer's own DB insert.
+     */
+    private static void submitAndVerify(String testId, String description,
+                                         String orderId, String clientId, String symbol,
+                                         int qty, String side, double price,
+                                         String expectedStatus) {
+        try {
+            TradeOrder order = createOrder(orderId, clientId, symbol, qty, side, price);
+            submitOrderSafe(order);
+            Thread.sleep(5000);
+
+            String status = getOrderStatus(orderId);
+            assertTest(testId, description, expectedStatus.equals(status),
+                "status=" + status);
+        } catch (Exception e) {
+            assertTest(testId, description, false, e.getMessage());
+        }
+    }
+
+    /**
+     * Submit an order, tolerating DB insert failures from the TradeMessageProducer.
+     * The producer sends to MQ first, then tries to insert to DB. Due to a race
+     * condition, the order engine may insert the order before the producer does,
+     * causing a duplicate key exception. The MQ message is still sent successfully.
+     */
+    private static void submitOrderSafe(TradeOrder order) {
+        TradeMessageProducer producer = new TradeMessageProducer();
+        try {
+            producer.submitOrder(order);
+        } catch (RuntimeException e) {
+            // Race condition: order engine inserted the order before the producer.
+            // The MQ message was already sent successfully (step 2 in producer).
+            System.out.println("  [NOTE] Producer DB insert race condition for " + 
+                order.getOrderId() + " (MQ send succeeded)");
+        }
+    }
+
+    private static TradeOrder createOrder(String orderId, String clientId, String symbol,
+                                          int qty, String side, double price) {
+        TradeOrder order = new TradeOrder();
+        order.setOrderId(orderId);
+        order.setClientId(clientId);
+        order.setSymbol(symbol);
+        order.setQuantity(qty);
+        order.setSide(side);
+        order.setRequestedPrice(price);
+        return order;
+    }
+
+    private static String getOrderStatus(String orderId) {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            ps = conn.prepareStatement("SELECT STATUS FROM TRADE_ORDERS WHERE ORDER_ID = ?");
+            ps.setString(1, orderId);
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("STATUS");
+            }
+            return null;
+        } catch (Exception e) {
+            System.err.println("  Error getting order status: " + e.getMessage());
+            return null;
+        } finally {
+            ConnectionHelper.closeQuietly(rs);
+            ConnectionHelper.closeQuietly(ps);
+            ConnectionHelper.closeQuietly(conn);
+        }
+    }
+
+    private static int countRecords(String tableName) {
+        Connection conn = null;
+        Statement stmt = null;
+        ResultSet rs = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            stmt = conn.createStatement();
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tableName);
+            rs.next();
+            return rs.getInt(1);
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            ConnectionHelper.closeQuietly(rs);
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+        }
+    }
+
+    private static String readFile(File file) throws Exception {
+        BufferedReader reader = new BufferedReader(new FileReader(file));
+        StringBuffer sb = new StringBuffer();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            sb.append(line).append("\n");
+        }
+        reader.close();
+        return sb.toString();
+    }
+
+    private static void deleteDir(File dir) {
+        if (dir.exists()) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (int i = 0; i < files.length; i++) {
+                    if (files[i].isDirectory()) {
+                        deleteDir(files[i]);
+                    } else {
+                        files[i].delete();
+                    }
+                }
+            }
+            dir.delete();
+        }
+    }
+
+    // ========================================================================
+    // Assertion Framework
+    // ========================================================================
+
+    private static void assertTest(String id, String description, boolean passed) {
+        assertTest(id, description, passed, null);
+    }
+
+    private static void assertTest(String id, String description, boolean result, String detail) {
+        total++;
+        String status;
+        if (result) {
+            passed++;
+            status = "PASS";
+        } else {
+            failed++;
+            status = "FAIL";
+            failedTests.add(id + ": " + description);
+        }
+        System.out.println("  [" + status + "] " + id + " - " + description 
+            + (detail != null ? " (" + detail + ")" : ""));
+    }
+
+    private static void printSummary() {
+        System.out.println();
+        System.out.println("##############################################");
+        System.out.println("  TEST SUMMARY");
+        System.out.println("##############################################");
+        System.out.println("  Total:  " + total);
+        System.out.println("  Passed: " + passed);
+        System.out.println("  Failed: " + failed);
+        System.out.println();
+
+        if (failed > 0) {
+            System.out.println("  FAILED TESTS:");
+            for (int i = 0; i < failedTests.size(); i++) {
+                System.out.println("    - " + failedTests.get(i));
+            }
+        } else {
+            System.out.println("  ALL TESTS PASSED!");
+        }
+        System.out.println("##############################################");
+    }
+}

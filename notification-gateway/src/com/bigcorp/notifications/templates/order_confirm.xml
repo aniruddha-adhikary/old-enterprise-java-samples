@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Order Confirmation Email Template
+  BigCorp Trading Systems
+  
+  Placeholders:
+    ${orderId}    - The trade order ID
+    ${symbol}     - Trading symbol (e.g. MSFT, IBM)
+    ${quantity}   - Number of shares
+    ${side}       - BUY or SELL
+    ${price}      - Execution price
+    ${clientName} - Client name/email
+-->
+<emailTemplate>
+  <body>
+Dear Valued Client,
+
+Your trade order has been confirmed and executed successfully.
+
+Order Details:
+  Order ID:    ${orderId}
+  Symbol:      ${symbol}
+  Action:      ${side}
+  Quantity:    ${quantity} shares
+  Price:       $${price} per share
+
+This order has been submitted to the exchange and will settle in
+accordance with standard T+3 settlement procedures.
+
+If you have any questions regarding this trade, please contact
+your account representative or the BigCorp Trading Desk at
+1-800-BIG-CORP (1-800-244-2677).
+
+Thank you for choosing BigCorp Trading Services.
+
+Regards,
+BigCorp Trade Operations
+
+---
+DISCLAIMER: This is an automated notification from BigCorp Trading
+Systems. This message is for informational purposes only and does
+not constitute investment advice. Please review your trade
+confirmation statement for official records. If you believe you
+received this message in error, please contact the Help Desk
+immediately at helpdesk@bigcorp.com.
+  </body>
+</emailTemplate>

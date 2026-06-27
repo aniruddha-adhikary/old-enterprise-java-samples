@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  trade-desk module build file
+  Usually invoked from the master build.xml, but can be run standalone.
+  
+  Author: Bob
+  Last updated: 2002-03-15
+-->
+<project name="bigcorp-tradedesk" default="compile" basedir=".">
+
+    <property file="../build.properties"/>
+    <property name="src.dir" value="src"/>
+    <property name="build.dir" value="../build/trade-desk"/>
+
+    <path id="compile.classpath">
+        <fileset dir="../${lib.dir}">
+            <include name="*.jar"/>
+        </fileset>
+        <pathelement location="../build/common-lib"/>
+    </path>
+
+    <target name="compile">
+        <mkdir dir="${build.dir}"/>
+        <javac srcdir="${src.dir}" destdir="${build.dir}"
+               source="${javac.source}" target="${javac.target}"
+               debug="true" includeantruntime="false">
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+
+</project>
