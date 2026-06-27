@@ -412,6 +412,13 @@
         <delete dir="${dist.dir}"/>
     </target>
 
+    <!-- Verification gate for evolution simulation.
+         Runs clean compile + EndToEndTest.
+         Must pass (or failures documented) at the end of every wave.
+         See docs/evolution/SIMULATION.md for the gate procedure. -->
+    <target name="verify" depends="clean,compile-test,run-test"
+            description="Verification gate: clean build + run all tests"/>
+
     <!-- Clean including downloaded libs -->
     <target name="clean-all" depends="clean"
             description="Remove build artifacts and downloaded libs">
