@@ -229,6 +229,27 @@
         </javac>
     </target>
 
+    <!-- Compile test suite -->
+    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+            description="Compile end-to-end test suite">
+        <mkdir dir="${build.dir}/test"/>
+        <javac srcdir="test/src"
+               destdir="${build.dir}/test"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+            </classpath>
+        </javac>
+    </target>
+
     <!-- Compile all -->
     <target name="compile" 
             depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-demo"
@@ -301,6 +322,24 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/demo"/>
+            </classpath>
+        </java>
+    </target>
+
+    <!-- Run end-to-end tests -->
+    <target name="run-test" depends="compile-test"
+            description="Run the end-to-end test suite">
+        <java classname="com.bigcorp.test.EndToEndTest" fork="true"
+              failonerror="true">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
     </target>
