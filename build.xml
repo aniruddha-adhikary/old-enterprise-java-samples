@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BigCorp Trade Order Management System
+  Master Ant Build File
+  
+  Targets:
+    init       - Create build directories
+    deps       - Download dependency JARs (requires internet)
+    compile    - Compile all modules
+    package    - Create JAR/WAR files
+    clean      - Remove build artifacts
+    run-demo   - Run the end-to-end demo
+
+  Author: Build team / Bob
+  Last updated: 2002-08-10
+  
+  NOTE: If the 'deps' target fails, you can manually download
+  the JARs and put them in lib/. See lib/README.txt for the list.
+  The proxy settings below are for the office network.
+  If you're at home, comment them out.
+-->
+<project name="bigcorp-trading" default="compile" basedir=".">
+
+    <property file="build.properties"/>
+
+    <!-- dependency JAR URLs (Maven Central) -->
+    <property name="maven.repo" value="https://repo1.maven.org/maven2"/>
+
+    <target name="init">
+        <mkdir dir="${lib.dir}"/>
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+    </target>
+
+    <!-- Download dependency JARs from Maven Central -->
+    <target name="deps" depends="init"
+            description="Download dependency JARs (requires internet connection)">
+
+        <!-- HSQLDB - our Oracle stand-in -->
+        <get src="${maven.repo}/org/hsqldb/hsqldb/2.3.4/hsqldb-2.3.4.jar"
+             dest="${lib.dir}/hsqldb-2.3.4.jar" skipexisting="true"/>
+
+        <!-- Servlet API 2.5 -->
+        <get src="${maven.repo}/javax/servlet/servlet-api/2.5/servlet-api-2.5.jar"
+             dest="${lib.dir}/servlet-api-2.5.jar" skipexisting="true"/>
+
+        <!-- JSP API -->
+        <get src="${maven.repo}/javax/servlet/jsp/jsp-api/2.1/jsp-api-2.1.jar"
+             dest="${lib.dir}/jsp-api-2.1.jar" skipexisting="true"/>
+
+        <!-- ActiveMQ (includes JMS API) -->
+        <get src="${maven.repo}/org/apache/activemq/activemq-all/5.15.16/activemq-all-5.15.16.jar"
+             dest="${lib.dir}/activemq-all-5.15.16.jar" skipexisting="true"/>
+
+        <!-- JavaMail -->
+        <get src="${maven.repo}/javax/mail/mail/1.4.7/mail-1.4.7.jar"
+             dest="${lib.dir}/mail-1.4.7.jar" skipexisting="true"/>
+
+        <!-- JavaBeans Activation Framework (needed by JavaMail) -->
+        <get src="${maven.repo}/javax/activation/activation/1.1.1/activation-1.1.1.jar"
+             dest="${lib.dir}/activation-1.1.1.jar" skipexisting="true"/>
+
+        <!-- Apache Axis 1.4 (SOAP) -->
+        <get src="${maven.repo}/org/apache/axis/axis/1.4/axis-1.4.jar"
+             dest="${lib.dir}/axis-1.4.jar" skipexisting="true"/>
+
+        <!-- Axis dependencies -->
+        <get src="${maven.repo}/javax/xml/jaxrpc-api/1.1/jaxrpc-api-1.1.jar"
+             dest="${lib.dir}/jaxrpc-api-1.1.jar" skipexisting="true"/>
+        <get src="${maven.repo}/commons-discovery/commons-discovery/0.5/commons-discovery-0.5.jar"
+             dest="${lib.dir}/commons-discovery-0.5.jar" skipexisting="true"/>
+        <get src="${maven.repo}/commons-logging/commons-logging/1.2/commons-logging-1.2.jar"
+             dest="${lib.dir}/commons-logging-1.2.jar" skipexisting="true"/>
+        <get src="${maven.repo}/wsdl4j/wsdl4j/1.6.3/wsdl4j-1.6.3.jar"
+             dest="${lib.dir}/wsdl4j-1.6.3.jar" skipexisting="true"/>
+        <get src="${maven.repo}/javax/xml/soap/saaj-api/1.3.5/saaj-api-1.3.5.jar"
+             dest="${lib.dir}/saaj-api-1.3.5.jar" skipexisting="true"/>
+
+        <!-- JSch for SFTP -->
+        <get src="${maven.repo}/com/jcraft/jsch/0.1.55/jsch-0.1.55.jar"
+             dest="${lib.dir}/jsch-0.1.55.jar" skipexisting="true"/>
+
+        <!-- Apache SSHD for embedded SFTP server (testing) -->
+        <get src="${maven.repo}/org/apache/sshd/sshd-core/2.9.2/sshd-core-2.9.2.jar"
+             dest="${lib.dir}/sshd-core-2.9.2.jar" skipexisting="true"/>
+        <get src="${maven.repo}/org/apache/sshd/sshd-common/2.9.2/sshd-common-2.9.2.jar"
+             dest="${lib.dir}/sshd-common-2.9.2.jar" skipexisting="true"/>
+        <get src="${maven.repo}/org/apache/sshd/sshd-sftp/2.9.2/sshd-sftp-2.9.2.jar"
+             dest="${lib.dir}/sshd-sftp-2.9.2.jar" skipexisting="true"/>
+
+        <!-- SLF4J (needed by some deps) -->
+        <get src="${maven.repo}/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar"
+             dest="${lib.dir}/slf4j-api-1.7.36.jar" skipexisting="true"/>
+        <get src="${maven.repo}/org/slf4j/slf4j-simple/1.7.36/slf4j-simple-1.7.36.jar"
+             dest="${lib.dir}/slf4j-simple-1.7.36.jar" skipexisting="true"/>
+
+        <echo message="Dependencies downloaded to ${lib.dir}/"/>
+    </target>
+
+    <!-- Master classpath -->
+    <path id="master.classpath">
+        <fileset dir="${lib.dir}">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+    <!-- Compile common-lib first (everything depends on it) -->
+    <target name="compile-common" depends="init"
+            description="Compile common-lib">
+        <mkdir dir="${build.dir}/common-lib"/>
+        <javac srcdir="${common.dir}/src"
+               destdir="${build.dir}/common-lib"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="master.classpath"/>
+        </javac>
+        <!-- copy properties files to output -->
+        <copy todir="${build.dir}/common-lib">
+            <fileset dir="${common.dir}/src">
+                <include name="**/*.properties"/>
+                <include name="**/*.xml"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- Classpath with common-lib compiled -->
+    <path id="app.classpath">
+        <path refid="master.classpath"/>
+        <pathelement location="${build.dir}/common-lib"/>
+    </path>
+
+    <!-- Compile trade-desk -->
+    <target name="compile-tradedesk" depends="compile-common"
+            description="Compile trade-desk web app">
+        <mkdir dir="${build.dir}/trade-desk"/>
+        <javac srcdir="${tradedesk.dir}/src"
+               destdir="${build.dir}/trade-desk"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+    </target>
+
+    <!-- Compile order-engine -->
+    <target name="compile-orderengine" depends="compile-common"
+            description="Compile order-engine">
+        <mkdir dir="${build.dir}/order-engine"/>
+        <javac srcdir="${orderengine.dir}/src"
+               destdir="${build.dir}/order-engine"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+    </target>
+
+    <!-- Compile pricing-service -->
+    <target name="compile-pricing" depends="compile-common"
+            description="Compile pricing-service">
+        <mkdir dir="${build.dir}/pricing-service"/>
+        <javac srcdir="${pricing.dir}/src"
+               destdir="${build.dir}/pricing-service"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+        <!-- copy WSDL -->
+        <copy todir="${build.dir}/pricing-service">
+            <fileset dir="${pricing.dir}">
+                <include name="wsdl/**"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- Compile notification-gateway -->
+    <target name="compile-notifications" depends="compile-common"
+            description="Compile notification-gateway">
+        <mkdir dir="${build.dir}/notification-gateway"/>
+        <javac srcdir="${notifications.dir}/src"
+               destdir="${build.dir}/notification-gateway"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+        <!-- copy template files -->
+        <copy todir="${build.dir}/notification-gateway">
+            <fileset dir="${notifications.dir}/src">
+                <include name="**/*.xml"/>
+                <include name="**/*.properties"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- Compile settlement-gateway -->
+    <target name="compile-settlement" depends="compile-common"
+            description="Compile settlement-gateway">
+        <mkdir dir="${build.dir}/settlement-gateway"/>
+        <javac srcdir="${settlement.dir}/src"
+               destdir="${build.dir}/settlement-gateway"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+    </target>
+
+    <!-- Compile all -->
+    <target name="compile" 
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+            description="Compile all modules"/>
+
+    <!-- Package common-lib as JAR -->
+    <target name="jar-common" depends="compile-common">
+        <mkdir dir="${dist.dir}"/>
+        <jar destfile="${dist.dir}/bigcorp-common.jar"
+             basedir="${build.dir}/common-lib"/>
+    </target>
+
+    <!-- Package trade-desk as WAR -->
+    <target name="war-tradedesk" depends="compile-tradedesk,jar-common">
+        <mkdir dir="${dist.dir}"/>
+        <war destfile="${dist.dir}/trade-desk.war"
+             webxml="${tradedesk.dir}/web/WEB-INF/web.xml">
+            <fileset dir="${tradedesk.dir}/web">
+                <exclude name="WEB-INF/web.xml"/>
+            </fileset>
+            <classes dir="${build.dir}/trade-desk"/>
+            <lib dir="${dist.dir}">
+                <include name="bigcorp-common.jar"/>
+            </lib>
+            <lib dir="${lib.dir}">
+                <include name="activemq-all-*.jar"/>
+                <include name="hsqldb-*.jar"/>
+            </lib>
+        </war>
+    </target>
+
+    <!-- Package pricing-service as WAR -->
+    <target name="war-pricing" depends="compile-pricing,jar-common">
+        <mkdir dir="${dist.dir}"/>
+        <war destfile="${dist.dir}/pricing-service.war"
+             webxml="${pricing.dir}/web/WEB-INF/web.xml">
+            <fileset dir="${pricing.dir}/web">
+                <exclude name="WEB-INF/web.xml"/>
+            </fileset>
+            <classes dir="${build.dir}/pricing-service"/>
+            <lib dir="${dist.dir}">
+                <include name="bigcorp-common.jar"/>
+            </lib>
+            <lib dir="${lib.dir}">
+                <include name="axis-*.jar"/>
+                <include name="jaxrpc-*.jar"/>
+                <include name="commons-discovery-*.jar"/>
+                <include name="commons-logging-*.jar"/>
+                <include name="wsdl4j-*.jar"/>
+                <include name="saaj-*.jar"/>
+                <include name="hsqldb-*.jar"/>
+            </lib>
+        </war>
+    </target>
+
+    <!-- Package all -->
+    <target name="package" depends="jar-common,war-tradedesk,war-pricing"
+            description="Create all JARs and WARs"/>
+
+    <!-- Run the end-to-end demo -->
+    <target name="run-demo" depends="compile"
+            description="Run the end-to-end demo">
+        <java classname="com.bigcorp.demo.DemoRunner" fork="true">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+                <pathelement location="${build.dir}/trade-desk"/>
+                <pathelement location="${build.dir}/order-engine"/>
+                <pathelement location="${build.dir}/pricing-service"/>
+                <pathelement location="${build.dir}/notification-gateway"/>
+                <pathelement location="${build.dir}/settlement-gateway"/>
+            </classpath>
+        </java>
+    </target>
+
+    <!-- Clean -->
+    <target name="clean" description="Remove build artifacts">
+        <delete dir="${build.dir}"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+
+    <!-- Clean including downloaded libs -->
+    <target name="clean-all" depends="clean"
+            description="Remove build artifacts and downloaded libs">
+        <delete dir="${lib.dir}"/>
+    </target>
+
+</project>
