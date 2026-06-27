@@ -26,6 +26,19 @@ public class ConnectionHelper {
     private static boolean initialized = false;
 
     /**
+     * Reset the connection helper so it can be re-initialized.
+     * Added in 2002 because the test team needed to switch databases
+     * without restarting the JVM. "It's a hack but it works." - Bob
+     */
+    public static synchronized void reset() {
+        initialized = false;
+        url = null;
+        username = null;
+        password = null;
+        driver = null;
+    }
+
+    /**
      * Initialize from properties file.
      * Call this once at startup. Or don't, and we'll use defaults.
      */
@@ -78,13 +91,26 @@ public class ConnectionHelper {
      * Get a database connection.
      * Caller is responsible for closing it. Yes, we know about try-with-resources.
      * No, this was written before that existed.
+     *
+     * On Oracle, sets NLS_DATE_FORMAT so our date string literals work.
+     * (added after the migration to Oracle broke all the DAO date handling)
      */
     public static Connection getConnection() {
         if (!initialized) {
             init();
         }
         try {
-            return DriverManager.getConnection(url, username, password);
+            Connection conn = DriverManager.getConnection(url, username, password);
+            // HACK: Oracle's default NLS_DATE_FORMAT is DD-MON-RR but all our
+            // DAOs use yyyy-MM-dd HH:mm:ss string literals for dates.
+            // Setting it per-connection because "the DBA won't change it system-wide"
+            if (driver != null && driver.contains("oracle")) {
+                Statement stmt = conn.createStatement();
+                stmt.execute("ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS'");
+                stmt.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF'");
+                stmt.close();
+            }
+            return conn;
         } catch (Exception e) {
             System.err.println("ERROR: Failed to get database connection: " + e.getMessage());
             e.printStackTrace();

@@ -1,0 +1,127 @@
+-- BigCorp Trade Order Management System
+-- Oracle XE Schema (adapted from original Oracle 8i DDL)
+--
+-- Run as bigcorp_app user against XEPDB1
+
+SET DEFINE OFF;
+
+-- ============================
+-- CLIENTS
+-- ============================
+CREATE TABLE CLIENTS (
+    CLIENT_ID       VARCHAR2(20)    PRIMARY KEY,
+    CLIENT_NAME     VARCHAR2(100)   NOT NULL,
+    EMAIL           VARCHAR2(100),
+    PHONE           VARCHAR2(20),
+    TIER            VARCHAR2(10)    DEFAULT 'BRONZE',
+    MAX_ORDER_VALUE NUMBER(15,2)    DEFAULT 100000.00,
+    ACTIVE          NUMBER(1)       DEFAULT 1,
+    CREATED_DATE    DATE            DEFAULT SYSDATE
+);
+
+-- ============================
+-- TRADE_ORDERS
+-- ============================
+CREATE TABLE TRADE_ORDERS (
+    ORDER_ID        VARCHAR2(30)    PRIMARY KEY,
+    CLIENT_ID       VARCHAR2(20)    NOT NULL REFERENCES CLIENTS(CLIENT_ID),
+    SYMBOL          VARCHAR2(10)    NOT NULL,
+    QUANTITY        NUMBER(10)      NOT NULL,
+    SIDE            VARCHAR2(4)     NOT NULL,
+    PRICE           NUMBER(15,4)    DEFAULT 0,
+    REQUESTED_PRICE NUMBER(15,4)    DEFAULT 0,
+    STATUS          VARCHAR2(20)    DEFAULT 'NEW',
+    ORDER_DATE      DATE            DEFAULT SYSDATE,
+    LAST_MODIFIED   DATE            DEFAULT SYSDATE,
+    NOTES           VARCHAR2(500)
+);
+
+CREATE INDEX IDX_ORDERS_STATUS ON TRADE_ORDERS(STATUS);
+CREATE INDEX IDX_ORDERS_CLIENT ON TRADE_ORDERS(CLIENT_ID);
+CREATE INDEX IDX_ORDERS_DATE ON TRADE_ORDERS(ORDER_DATE);
+
+-- ============================
+-- NOTIFICATIONS
+-- ============================
+CREATE TABLE NOTIFICATIONS (
+    NOTIFICATION_ID     VARCHAR2(30)    PRIMARY KEY,
+    NOTIFICATION_TYPE   VARCHAR2(20)    NOT NULL,
+    RECIPIENT           VARCHAR2(100)   NOT NULL,
+    SUBJECT             VARCHAR2(200),
+    BODY                VARCHAR2(2000),
+    CHANNEL             VARCHAR2(10)    NOT NULL,
+    STATUS              VARCHAR2(10)    DEFAULT 'PENDING',
+    ORDER_ID            VARCHAR2(30),
+    CREATED_DATE        DATE            DEFAULT SYSDATE,
+    SENT_DATE           DATE,
+    RETRY_COUNT         NUMBER(3)       DEFAULT 0
+);
+
+-- ============================
+-- SETTLEMENT_RECORDS
+-- ============================
+CREATE TABLE SETTLEMENT_RECORDS (
+    RECORD_ID       VARCHAR2(30)    PRIMARY KEY,
+    ORDER_ID        VARCHAR2(30)    NOT NULL,
+    CLIENT_ID       VARCHAR2(20)    NOT NULL,
+    SYMBOL          VARCHAR2(10)    NOT NULL,
+    QUANTITY        NUMBER(10)      NOT NULL,
+    SIDE            VARCHAR2(4)     NOT NULL,
+    AMOUNT          NUMBER(15,4)    NOT NULL,
+    COMMISSION      NUMBER(10,4)    DEFAULT 0,
+    TRADE_DATE      DATE            NOT NULL,
+    SETTLEMENT_DATE DATE,
+    STATUS          VARCHAR2(15)    DEFAULT 'PENDING',
+    BATCH_ID        VARCHAR2(30),
+    EXTERNAL_REF    VARCHAR2(50)
+);
+
+CREATE INDEX IDX_SETTLEMENT_STATUS ON SETTLEMENT_RECORDS(STATUS);
+CREATE INDEX IDX_SETTLEMENT_BATCH ON SETTLEMENT_RECORDS(BATCH_ID);
+
+-- ============================
+-- AUDIT_LOG
+-- ============================
+CREATE SEQUENCE SEQ_AUDIT_LOG START WITH 1 INCREMENT BY 1;
+
+CREATE TABLE AUDIT_LOG (
+    LOG_ID          NUMBER          PRIMARY KEY,
+    EVENT_TYPE      VARCHAR2(30)    NOT NULL,
+    SOURCE_SYSTEM   VARCHAR2(30),
+    ENTITY_TYPE     VARCHAR2(20),
+    ENTITY_ID       VARCHAR2(30),
+    DESCRIPTION     VARCHAR2(500),
+    LOG_DATE        DATE            DEFAULT SYSDATE,
+    USER_ID         VARCHAR2(30)
+);
+
+-- ============================
+-- PRICING_CACHE
+-- ============================
+CREATE TABLE PRICING_CACHE (
+    SYMBOL          VARCHAR2(10)    PRIMARY KEY,
+    BID_PRICE       NUMBER(15,4),
+    ASK_PRICE       NUMBER(15,4),
+    LAST_PRICE      NUMBER(15,4),
+    CURRENCY        VARCHAR2(3)     DEFAULT 'USD',
+    LAST_UPDATED    DATE            DEFAULT SYSDATE
+);
+
+-- ============================
+-- Sample data
+-- ============================
+INSERT INTO CLIENTS VALUES ('C001', 'Acme Trading LLC', 'trading@acme.com', '555-0100', 'GOLD', 500000.00, 1, SYSDATE);
+INSERT INTO CLIENTS VALUES ('C002', 'Henderson Capital', 'orders@henderson.com', '555-0200', 'PLATINUM', 5000000.00, 1, SYSDATE);
+INSERT INTO CLIENTS VALUES ('C003', 'Smith & Associates', 'desk@smithassoc.com', '555-0300', 'SILVER', 250000.00, 1, SYSDATE);
+INSERT INTO CLIENTS VALUES ('C004', 'MegaFund Inc', 'ops@megafund.com', '555-0400', 'GOLD', 1000000.00, 1, SYSDATE);
+INSERT INTO CLIENTS VALUES ('C005', 'Pinnacle Investments', 'trade@pinnacle.com', '555-0500', 'BRONZE', 100000.00, 1, SYSDATE);
+
+INSERT INTO PRICING_CACHE VALUES ('MSFT', 25.50, 25.75, 25.63, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('IBM', 120.00, 120.50, 120.25, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('ORCL', 15.25, 15.50, 15.38, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('SUNW', 8.75, 9.00, 8.88, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('CSCO', 22.00, 22.25, 22.13, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('INTC', 30.50, 30.75, 30.63, 'USD', SYSDATE);
+INSERT INTO PRICING_CACHE VALUES ('DELL', 35.00, 35.25, 35.13, 'USD', SYSDATE);
+
+COMMIT;
