@@ -1,5 +1,6 @@
 package com.bigcorp.common.rules.impl;
 
+import com.bigcorp.common.billing.CommissionCalculator;
 import com.bigcorp.common.rules.Rule;
 import com.bigcorp.common.rules.RuleContext;
 import com.bigcorp.common.model.TradeOrder;
@@ -15,8 +16,7 @@ import com.bigcorp.common.model.TradeOrder;
  */
 public class ShortSaleRule implements Rule {
 
-    // HACK: commission calc should be centralized but no time to refactor (JIRA-2501)
-    private static final double COMMISSION_RATE = 0.02; // same as everywhere else
+    // Resolved: was copy-pasted constant, now uses centralized CommissionCalculator (JIRA-2501)
 
     public String getName() {
         return "ShortSale";
@@ -42,8 +42,10 @@ public class ShortSaleRule implements Rule {
                     return false;
                 }
 
-                // stash commission for downstream
-                context.setAttribute("short_sale_commission", Double.valueOf(quantity * COMMISSION_RATE));
+                // stash commission for downstream — uses centralized rate from client tier
+                String tier = (context.getClient() != null) ? context.getClient().getTier() : null;
+                double rate = CommissionCalculator.getRate(tier);
+                context.setAttribute("short_sale_commission", Double.valueOf(quantity * rate));
             }
 
             return true;

@@ -71,3 +71,16 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - Known issue / JIRA-4102: T10.2 count now 8 (was 5, was 4)
 
 ---
+
+## 2007 Q1 — Pay down debt — engineer: architect
+
+**Wave 5**
+
+- Fixed RuleEngine priority comparator behind feature flag (bigcorp.rules.priority.fixed system property, defaults false for backward compat) — JIRA-5300
+- Introduced typed RuleResult class for structured rule output (replaces ad-hoc string-keyed attributes)
+- Added TypedRule interface extending Rule, with evaluateTyped() method
+- RuleEngine now supports both TypedRule and legacy Rule implementations
+- Fixed ShortSaleRule copy-pasted commission constant to use CommissionCalculator (JIRA-2501 cleanup)
+- Could not fully clean up: derivatives-engine still has its own FX_COMMISSION, string-keyed attributes still widely used
+
+---

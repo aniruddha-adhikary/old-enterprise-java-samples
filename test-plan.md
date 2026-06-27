@@ -337,6 +337,33 @@ ant run-demo
 
 ---
 
+## Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+
+### T14.1 — RuleResult round-trip
+**Action:** Create a RuleResult with passed=true, ruleName, message, and attributes
+**Verify:** All fields are retrievable and match what was set
+
+### T14.2 — TypedRule interface works when implemented by a test rule
+**Action:** Create a TypedRule implementation, register with RuleEngine, evaluate
+**Verify:**
+- Engine calls evaluateTyped() (not legacy evaluate())
+- RuleResult attributes are applied to context via applyToContext()
+- execute() is still called after passing
+
+### T14.3 — Priority flag defaults to old behavior (descending = high runs first)
+**Action:** Clear system property, add rules with priority 10 and 100, evaluate
+**Verify:** Rule with priority 100 runs first (descending order preserved by default)
+
+### T14.4 — Setting bigcorp.rules.priority.fixed=true changes ordering
+**Action:** Set system property bigcorp.rules.priority.fixed=true, add rules with priority 10 and 100
+**Verify:** Rule with priority 10 runs first (ascending = correct behavior)
+
+### T14.5 — ShortSaleRule uses CommissionCalculator (no hardcoded commission)
+**Action:** Create SELL order for GOLD client (500 shares), evaluate via ShortSaleRule
+**Verify:** Stashed short_sale_commission matches CommissionCalculator.getRate("GOLD") * 500 = 5.0 (not 10.0 from old hardcoded 0.02)
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

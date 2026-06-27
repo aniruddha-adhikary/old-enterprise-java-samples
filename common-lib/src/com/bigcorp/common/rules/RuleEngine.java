@@ -24,6 +24,13 @@ import java.util.List;
  *   rules. Do not use priorities between 1-10 unless you want your rule
  *   to run last.
  * 
+ * <p><b>JIRA-5300:</b> The priority comparator can now be fixed via system property
+ * {@code bigcorp.rules.priority.fixed}. When set to {@code true}, the engine uses
+ * ASCENDING order (low number = runs first, which is correct). When {@code false}
+ * (the default), the old DESCENDING behavior is preserved for backward compatibility.
+ * Migration path: set the property to {@code true} in new deployments and re-calibrate
+ * rule priorities so that low numbers indicate high importance.</p>
+ * 
  * @author Bob
  * @since 1.0
  */
@@ -31,6 +38,9 @@ public class RuleEngine {
 
     private List rules; // List of Rule objects
     private static RuleEngine instance; // singleton because "we only need one"
+
+    // JIRA-5300: priority comparator can now be fixed via system property
+    private static final String PRIORITY_FIX_PROPERTY = "bigcorp.rules.priority.fixed";
 
     private RuleEngine() {
         this.rules = new ArrayList();
@@ -55,25 +65,51 @@ public class RuleEngine {
     }
 
     /**
+     * Check whether the fixed priority ordering is enabled.
+     * 
+     * @return true if system property bigcorp.rules.priority.fixed is "true"
+     */
+    private static boolean isPriorityFixed() {
+        return "true".equalsIgnoreCase(System.getProperty(PRIORITY_FIX_PROPERTY, "false"));
+    }
+
+    /**
      * Register a rule with the engine.
      */
     public void addRule(Rule rule) {
         rules.add(rule);
         // sort by priority after each add (not efficient, but simple)
-        // NOTE: the comparator sorts DESCENDING, not ascending
-        // This is the "bug" mentioned in the class javadoc.
-        // High priority number = runs first. Yes, this is backwards.
-        Collections.sort(rules, new Comparator() {
-            public int compare(Object o1, Object o2) {
-                Rule r1 = (Rule) o1;
-                Rule r2 = (Rule) o2;
-                return r2.getPriority() - r1.getPriority();
-            }
-        });
+        // JIRA-5300: priority comparator can now be fixed via system property
+        if (isPriorityFixed()) {
+            // Fixed: ASCENDING order — low priority number = runs first (correct behavior)
+            Collections.sort(rules, new Comparator() {
+                public int compare(Object o1, Object o2) {
+                    Rule r1 = (Rule) o1;
+                    Rule r2 = (Rule) o2;
+                    return r1.getPriority() - r2.getPriority();
+                }
+            });
+        } else {
+            // Legacy: DESCENDING order — high priority number = runs first (backward compat)
+            // This is the "bug" mentioned in the class javadoc.
+            Collections.sort(rules, new Comparator() {
+                public int compare(Object o1, Object o2) {
+                    Rule r1 = (Rule) o1;
+                    Rule r2 = (Rule) o2;
+                    return r2.getPriority() - r1.getPriority();
+                }
+            });
+        }
     }
 
     /**
      * Evaluate all rules against the given context.
+     * 
+     * If a rule implements {@link TypedRule}, the engine calls
+     * {@link TypedRule#evaluateTyped(RuleContext)} and uses the returned
+     * {@link RuleResult}. The result is applied back to the context via
+     * {@link RuleResult#applyToContext(RuleContext)} for backward compatibility.
+     * Legacy rules that only implement {@link Rule} continue to work unchanged.
      * 
      * @return true if all rules passed, false if any failed
      */
@@ -96,8 +132,19 @@ public class RuleEngine {
             System.out.println("  Evaluating: " + rule.getName() + " (priority=" + rule.getPriority() + ")");
 
             boolean passed = false;
+            RuleResult result = null;
+
             try {
-                passed = rule.evaluate(context);
+                if (rule instanceof TypedRule) {
+                    // New path: TypedRule returns a structured RuleResult
+                    result = ((TypedRule) rule).evaluateTyped(context);
+                    passed = result.isPassed();
+                    // Apply result attributes back to context for backward compat
+                    result.applyToContext(context);
+                } else {
+                    // Legacy path: plain Rule interface
+                    passed = rule.evaluate(context);
+                }
             } catch (Exception e) {
                 // rule threw an exception - treat as failure
                 System.err.println("  ERROR in rule " + rule.getName() + ": " + e.getMessage());
@@ -116,9 +163,12 @@ public class RuleEngine {
                 }
                 context.addMessage("PASS: " + rule.getName());
             } else {
+                String failMessage = (result != null && result.getMessage() != null)
+                    ? result.getMessage()
+                    : "Failed rule: " + rule.getName();
                 context.addMessage("FAIL: " + rule.getName());
                 if (!context.isRejected()) {
-                    context.reject("Failed rule: " + rule.getName());
+                    context.reject(failMessage);
                 }
                 return false;
             }

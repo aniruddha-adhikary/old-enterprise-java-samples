@@ -11,6 +11,8 @@ import com.bigcorp.common.rules.Rule;
 import com.bigcorp.common.rules.RuleConfigLoader;
 import com.bigcorp.common.rules.RuleContext;
 import com.bigcorp.common.rules.RuleEngine;
+import com.bigcorp.common.rules.RuleResult;
+import com.bigcorp.common.rules.TypedRule;
 import com.bigcorp.common.rules.impl.ClientTierRule;
 import com.bigcorp.common.rules.impl.MarketHoursRule;
 import com.bigcorp.common.rules.impl.MaxOrderValueRule;
@@ -141,6 +143,9 @@ public class EndToEndTest {
 
             // Phase 13: Compliance Rules (post-2005 regulatory incident)
             phase13_complianceRules();
+
+            // Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+            phase14_wave5Cleanup();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -1265,15 +1270,17 @@ public class EndToEndTest {
             assertTest("T10.1", "RuleConfigLoader parse", false, e.getMessage());
         }
 
-        // T10.2 - Loaded rules match expected 4 rules with correct types
+        // T10.2 - Loaded rules include the original 4 core types (plus later additions)
+        // Updated: Wave 2 added RestrictedSymbol, Wave 4 added compliance rules (now 8 total)
         try {
             List rules = RuleConfigLoader.loadRules();
-            boolean correctCount = (rules.size() == 4);
+            boolean correctCount = (rules.size() == 8);
 
             boolean hasMaxOrder = false;
             boolean hasClientTier = false;
             boolean hasMarketHours = false;
             boolean hasSpecialClients = false;
+            boolean hasRestricted = false;
 
             for (int i = 0; i < rules.size(); i++) {
                 Rule rule = (Rule) rules.get(i);
@@ -1281,13 +1288,15 @@ public class EndToEndTest {
                 if (rule instanceof ClientTierRule) hasClientTier = true;
                 if (rule instanceof MarketHoursRule) hasMarketHours = true;
                 if (rule instanceof SpecialClientsRule) hasSpecialClients = true;
+                if (rule instanceof RestrictedSymbolRule) hasRestricted = true;
             }
 
-            assertTest("T10.2", "Config loads exactly 4 expected rule types",
-                correctCount && hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients,
+            boolean corePresent = hasMaxOrder && hasClientTier && hasMarketHours && hasSpecialClients && hasRestricted;
+            assertTest("T10.2", "Config loads 8 rules including core 4 + RestrictedSymbol + compliance",
+                correctCount && corePresent,
                 "count=" + rules.size() + ", maxOrder=" + hasMaxOrder
                 + ", clientTier=" + hasClientTier + ", marketHours=" + hasMarketHours
-                + ", specialClients=" + hasSpecialClients);
+                + ", specialClients=" + hasSpecialClients + ", restricted=" + hasRestricted);
         } catch (Exception e) {
             assertTest("T10.2", "Rule type verification", false, e.getMessage());
         }
@@ -1321,10 +1330,15 @@ public class EndToEndTest {
         }
 
         // T10.4 - Rule engine still works correctly with config-loaded rules
+        // Fixed: set clientId and symbol on order so compliance rules (WashTrade, KYC) don't reject
         try {
-            // The rule engine singleton is already loaded via OrderMessageListener.
-            // Verify it still evaluates a valid order correctly.
+            // Use a fresh engine with config-loaded rules to avoid singleton state issues
+            RuleEngine.reset();
             RuleEngine testEngine = RuleEngine.getInstance();
+            List configRules = RuleConfigLoader.loadRules();
+            for (int i = 0; i < configRules.size(); i++) {
+                testEngine.addRule((Rule) configRules.get(i));
+            }
 
             Client client = new Client();
             client.setClientId("C001");
@@ -1334,7 +1348,10 @@ public class EndToEndTest {
 
             TradeOrder order = new TradeOrder();
             order.setOrderId("CONFIG-TEST-001");
+            order.setClientId("C001");
+            order.setSymbol("MSFT");
             order.setQuantity(100);
+            order.setSide(TradeOrder.SIDE_BUY);
             order.setRequestedPrice(25.00);
 
             RuleContext ctx = new RuleContext(order, client);
@@ -1343,6 +1360,8 @@ public class EndToEndTest {
             assertTest("T10.4", "Rule engine evaluates correctly with config-loaded rules",
                 result && !ctx.isRejected(),
                 "passed=" + result);
+
+            RuleEngine.reset();
         } catch (Exception e) {
             assertTest("T10.4", "Config-loaded rule evaluation", false, e.getMessage());
         }
@@ -1702,6 +1721,231 @@ public class EndToEndTest {
         }
 
         System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup
+    // ========================================================================
+
+    private static void phase14_wave5Cleanup() {
+        System.out.println("=== Phase 14: Wave 5 — Typed RuleResult, Priority Flag, Commission Cleanup ===");
+        System.out.println();
+
+        // T14.1 - RuleResult round-trip (create, check fields)
+        try {
+            RuleResult result = new RuleResult(true, "TestRule", "Test passed successfully");
+            result.setAttribute("test_key", "test_value");
+            result.setAttribute("numeric_key", Double.valueOf(42.0));
+
+            boolean fieldsCorrect = result.isPassed()
+                && "TestRule".equals(result.getRuleName())
+                && "Test passed successfully".equals(result.getMessage())
+                && "test_value".equals(result.getAttribute("test_key"))
+                && Double.valueOf(42.0).equals(result.getAttribute("numeric_key"));
+
+            assertTest("T14.1", "RuleResult round-trip: fields and attributes preserved",
+                fieldsCorrect,
+                "passed=" + result.isPassed() + " ruleName=" + result.getRuleName()
+                    + " attrs=" + result.getAttributes().size());
+        } catch (Exception e) {
+            assertTest("T14.1", "RuleResult round-trip", false, e.getMessage());
+        }
+
+        // T14.2 - TypedRule interface works when implemented by a test rule
+        try {
+            // Create an inline TypedRule implementation for testing
+            TypedRule testTypedRule = new TypedRule() {
+                public String getName() { return "TestTypedRule"; }
+                public int getPriority() { return 50; }
+                public boolean isActive() { return true; }
+                public boolean evaluate(RuleContext context) {
+                    RuleResult r = evaluateTyped(context);
+                    return r.isPassed();
+                }
+                public void execute(RuleContext context) {
+                    context.setAttribute("typed_rule_executed", Boolean.TRUE);
+                }
+                public RuleResult evaluateTyped(RuleContext context) {
+                    RuleResult r = new RuleResult(true, "TestTypedRule", "Typed evaluation passed");
+                    r.setAttribute("typed_attr", "typed_value");
+                    return r;
+                }
+            };
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Test via the RuleEngine
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+            engine.addRule(testTypedRule);
+            boolean engineResult = engine.evaluate(ctx);
+
+            // Verify TypedRule path was taken (attributes applied to context)
+            Object typedAttr = ctx.getAttribute("typed_attr");
+            Object executedAttr = ctx.getAttribute("typed_rule_executed");
+
+            assertTest("T14.2", "TypedRule interface: evaluateTyped() called by engine, attributes applied",
+                engineResult && "typed_value".equals(typedAttr) && Boolean.TRUE.equals(executedAttr),
+                "engineResult=" + engineResult + " typed_attr=" + typedAttr + " executed=" + executedAttr);
+
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T14.2", "TypedRule interface", false, e.getMessage());
+        }
+
+        // T14.3 - Priority flag defaults to old behavior (descending = high runs first)
+        try {
+            // Ensure the flag is NOT set (default)
+            System.clearProperty("bigcorp.rules.priority.fixed");
+
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+
+            // Create two simple rules with different priorities
+            Rule lowPriority = new SimpleTestRule("LowPri", 10);
+            Rule highPriority = new SimpleTestRule("HighPri", 100);
+
+            engine.addRule(lowPriority);
+            engine.addRule(highPriority);
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-002");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            engine.evaluate(ctx);
+
+            // In descending (legacy) mode, HighPri(100) runs first
+            List messages = ctx.getMessages();
+            String firstPass = messages.size() > 0 ? (String) messages.get(0) : "";
+            boolean highRunsFirst = firstPass.contains("HighPri");
+
+            assertTest("T14.3", "Priority flag default: descending (high number runs first)",
+                highRunsFirst,
+                "first_message=" + firstPass);
+
+            RuleEngine.reset();
+        } catch (Exception e) {
+            assertTest("T14.3", "Priority flag default behavior", false, e.getMessage());
+        }
+
+        // T14.4 - Setting bigcorp.rules.priority.fixed=true changes ordering
+        try {
+            System.setProperty("bigcorp.rules.priority.fixed", "true");
+
+            RuleEngine.reset();
+            RuleEngine engine = RuleEngine.getInstance();
+
+            Rule lowPriority = new SimpleTestRule("LowPri", 10);
+            Rule highPriority = new SimpleTestRule("HighPri", 100);
+
+            engine.addRule(lowPriority);
+            engine.addRule(highPriority);
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE5-003");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            engine.evaluate(ctx);
+
+            // In ascending (fixed) mode, LowPri(10) runs first
+            List messages = ctx.getMessages();
+            String firstPass = messages.size() > 0 ? (String) messages.get(0) : "";
+            boolean lowRunsFirst = firstPass.contains("LowPri");
+
+            assertTest("T14.4", "Priority flag fixed=true: ascending (low number runs first)",
+                lowRunsFirst,
+                "first_message=" + firstPass);
+
+            // Clean up the system property
+            System.clearProperty("bigcorp.rules.priority.fixed");
+            RuleEngine.reset();
+        } catch (Exception e) {
+            System.clearProperty("bigcorp.rules.priority.fixed");
+            RuleEngine.reset();
+            assertTest("T14.4", "Priority flag fixed=true", false, e.getMessage());
+        }
+
+        // T14.5 - ShortSaleRule uses CommissionCalculator (no hardcoded constant)
+        try {
+            Client goldClient = new Client();
+            goldClient.setClientId("C001");
+            goldClient.setTier(Client.TIER_GOLD);
+            goldClient.setMaxOrderValue(500000);
+            goldClient.setActive(true);
+
+            TradeOrder sellOrder = new TradeOrder();
+            sellOrder.setOrderId("WAVE5-004");
+            sellOrder.setClientId("C001");
+            sellOrder.setSymbol("MSFT");
+            sellOrder.setQuantity(500);
+            sellOrder.setSide(TradeOrder.SIDE_SELL);
+            sellOrder.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(sellOrder, goldClient);
+            ShortSaleRule shortRule = new ShortSaleRule();
+            shortRule.evaluate(ctx);
+
+            Object stashedCommission = ctx.getAttribute("short_sale_commission");
+            // CommissionCalculator.getRate("GOLD") = 0.010
+            // Expected: 500 * 0.010 = 5.0
+            double expectedCommission = 500 * CommissionCalculator.getRate(Client.TIER_GOLD);
+
+            assertTest("T14.5", "ShortSaleRule uses CommissionCalculator (GOLD rate 0.01, 500 shares -> " + expectedCommission + ")",
+                stashedCommission != null
+                    && Math.abs(((Double) stashedCommission).doubleValue() - expectedCommission) < 0.001,
+                "short_sale_commission=" + stashedCommission + " expected=" + expectedCommission);
+        } catch (Exception e) {
+            assertTest("T14.5", "ShortSaleRule commission centralization", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    /**
+     * Simple test rule used by Phase 14 priority ordering tests.
+     * Always passes, records its name in context messages via execute().
+     */
+    private static class SimpleTestRule implements Rule {
+        private String name;
+        private int priority;
+
+        SimpleTestRule(String name, int priority) {
+            this.name = name;
+            this.priority = priority;
+        }
+
+        public String getName() { return name; }
+        public int getPriority() { return priority; }
+        public boolean isActive() { return true; }
+        public boolean evaluate(RuleContext context) { return true; }
+        public void execute(RuleContext context) { /* no-op */ }
     }
 
     // ========================================================================
