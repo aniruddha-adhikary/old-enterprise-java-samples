@@ -1,6 +1,6 @@
 # BigCorp Trade Order Management System
 
-A multi-application Java project emulating late 1990s / early 2000s enterprise Java technology. Six interconnected applications communicate via JMS message queues, SOAP web services, SFTP batch file transfer, and a shared database.
+A multi-application Java project emulating late 1990s / early 2000s enterprise Java technology. Seven interconnected applications communicate via JMS message queues, SOAP web services, SFTP batch file transfer, and a shared database.
 
 ## Architecture
 
@@ -29,6 +29,14 @@ A multi-application Java project emulating late 1990s / early 2000s enterprise J
                         JDBC
                           |
                       [HSQLDB]
+
+                          [audit-service]
+                               |
+                   XML/JMS (confirmations queue)
+                               |
+                             JDBC
+                          /        \
+                    AUDIT_LOG   BILLING_LEDGER
 ```
 
 ## Modules
@@ -41,6 +49,7 @@ A multi-application Java project emulating late 1990s / early 2000s enterprise J
 | **pricing-service** | WAR (SOAP) | WSDL, hand-rolled SOAP, JDBC | Real-time pricing quotes via SOAP endpoint |
 | **notification-gateway** | Standalone JMS consumer | JMS, JavaMail, HTTP | Email and SMS notification dispatch |
 | **settlement-gateway** | Batch processor | SFTP (JSch), JDBC, XML | End-of-day settlement file generation and SFTP transfer |
+| **audit-service** | Standalone JMS consumer | JMS, JDBC | Audit logging and billing ledger for order lifecycle events |
 
 ## Tech Stack
 
@@ -77,11 +86,12 @@ ant run-demo
 The demo runs the full pipeline with embedded infrastructure (HSQLDB in-memory DB, ActiveMQ embedded broker, local filesystem SFTP fallback):
 
 1. Initializes database and message queues
-2. Starts order engine and notification gateway listeners
+2. Starts order engine, notification gateway, and audit service listeners
 3. Submits a sample trade order (500 shares MSFT @ $25.75)
 4. Order engine processes it through the rule engine and pricing service
 5. Email notification dispatched (logged in dev mode)
-6. Settlement batch generates XML and fixed-width files
+6. Audit service records events to AUDIT_LOG and charges commission to BILLING_LEDGER
+7. Settlement batch generates XML and fixed-width files
 
 ## Build Targets
 
@@ -104,6 +114,17 @@ The custom rule engine evaluates orders through a chain of rules:
 | ClientTier | 90 | Validates client is active, sets processing priority based on tier |
 | MarketHours | 80 | Checks market hours (queues orders placed outside hours instead of rejecting) |
 | SpecialClients | 50 | Applies hardcoded overrides for specific client accounts |
+
+## Commission Rates (by Client Tier)
+
+Commission is calculated by `CommissionCalculator` based on the client's tier (resolves JIRA-2501):
+
+| Tier | Rate | Example ($100k order) |
+|------|------|-----------------------|
+| PLATINUM | 0.5% | $500 |
+| GOLD | 1.0% | $1,000 |
+| SILVER | 1.5% | $1,500 |
+| BRONZE | 2.0% | $2,000 |
 
 ## License
 

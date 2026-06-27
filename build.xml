@@ -212,8 +212,21 @@
         </javac>
     </target>
 
+    <!-- Compile audit-service -->
+    <target name="compile-audit" depends="compile-common"
+            description="Compile audit-service">
+        <mkdir dir="${build.dir}/audit-service"/>
+        <javac srcdir="${audit.dir}/src"
+               destdir="${build.dir}/audit-service"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath refid="app.classpath"/>
+        </javac>
+    </target>
+
     <!-- Compile demo -->
-    <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+    <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
             description="Compile demo runner">
         <mkdir dir="${build.dir}/demo"/>
         <javac srcdir="demo/src"
@@ -229,12 +242,13 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
             </classpath>
         </javac>
     </target>
 
     <!-- Compile test suite -->
-    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement"
+    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
             description="Compile end-to-end test suite">
         <mkdir dir="${build.dir}/test"/>
         <javac srcdir="test/src"
@@ -250,13 +264,14 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
             </classpath>
         </javac>
     </target>
 
     <!-- Compile all -->
     <target name="compile" 
-            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-demo"
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-demo"
             description="Compile all modules"/>
 
     <!-- Package common-lib as JAR -->
@@ -325,6 +340,7 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>
@@ -343,6 +359,7 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
@@ -364,6 +381,7 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
@@ -382,6 +400,7 @@
                 <pathelement location="${build.dir}/pricing-service"/>
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
+                <pathelement location="${build.dir}/audit-service"/>
                 <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>

@@ -15,6 +15,9 @@ import com.bigcorp.common.rules.impl.MaxOrderValueRule;
 import com.bigcorp.common.rules.impl.SpecialClientsRule;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
+import com.bigcorp.audit.consumer.AuditListener;
+import com.bigcorp.common.billing.CommissionCalculator;
+import com.bigcorp.common.model.AuditEvent;
 import com.bigcorp.notifications.consumer.NotificationListener;
 import com.bigcorp.orderengine.consumer.OrderMessageListener;
 import com.bigcorp.orderengine.dao.OrderDAO;
@@ -64,8 +67,10 @@ public class EndToEndTest {
 
     private static OrderMessageListener orderListener;
     private static NotificationListener notifListener;
+    private static AuditListener auditListener;
     private static Thread engineThread;
     private static Thread notifThread;
+    private static Thread auditThread;
 
     // ========================================================================
     // Main
@@ -97,6 +102,9 @@ public class EndToEndTest {
 
             // Phase 5: Notification verification
             phase5_notifications();
+
+            // Phase 5b: Audit & Billing verification
+            phase5b_auditAndBilling();
 
             // Phase 6: XML Round-Trip
             phase6_xmlRoundTrip();
@@ -144,7 +152,8 @@ public class EndToEndTest {
             Connection conn = ConnectionHelper.getConnection();
             Statement stmt = conn.createStatement();
             String[] tables = {"CLIENTS", "TRADE_ORDERS", "NOTIFICATIONS", 
-                               "SETTLEMENT_RECORDS", "AUDIT_LOG", "PRICING_CACHE"};
+                               "SETTLEMENT_RECORDS", "AUDIT_LOG", "PRICING_CACHE",
+                               "BILLING_LEDGER"};
             boolean allExist = true;
             for (int i = 0; i < tables.length; i++) {
                 try {
@@ -158,7 +167,7 @@ public class EndToEndTest {
             }
             ConnectionHelper.closeQuietly(stmt);
             ConnectionHelper.closeQuietly(conn);
-            assertTest("T1.2", "All 6 tables exist", allExist);
+            assertTest("T1.2", "All 7 tables exist", allExist);
         } catch (Exception e) {
             assertTest("T1.2", "All 6 tables exist", false, e.getMessage());
         }
@@ -214,9 +223,18 @@ public class EndToEndTest {
             notifThread.setDaemon(true);
             notifThread.start();
 
+            auditListener = new AuditListener();
+            auditThread = new Thread(new Runnable() {
+                public void run() {
+                    auditListener.startListening();
+                }
+            });
+            auditThread.setDaemon(true);
+            auditThread.start();
+
             // Give listeners time to connect
             Thread.sleep(2000);
-            assertTest("T1.5", "Order engine + notification listeners started", true);
+            assertTest("T1.5", "Order engine + notification + audit listeners started", true);
         } catch (Exception e) {
             assertTest("T1.5", "Listeners started", false, e.getMessage());
         }
@@ -579,6 +597,141 @@ public class EndToEndTest {
                 "hasEmail=" + hasEmail + ", hasSentStatus=" + hasSentStatus);
         } catch (Exception e) {
             assertTest("T5.3", "Notification channel/status", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
+    // ========================================================================
+    // Phase 5b: Audit & Billing
+    // ========================================================================
+
+    private static void phase5b_auditAndBilling() {
+        System.out.println("=== Phase 5b: Audit Log & Billing Ledger ===");
+        System.out.println();
+
+        // T5b.1 - AUDIT_LOG has entries from processed orders
+        try {
+            int auditCount = countRecords("AUDIT_LOG");
+            assertTest("T5b.1", "AUDIT_LOG has entries after order processing",
+                auditCount > 0, "audit_count=" + auditCount);
+        } catch (Exception e) {
+            assertTest("T5b.1", "AUDIT_LOG entries", false, e.getMessage());
+        }
+
+        // T5b.2 - AUDIT_LOG has ORDER_FILLED events
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM AUDIT_LOG WHERE EVENT_TYPE = ?");
+            ps.setString(1, AuditEvent.EVENT_ORDER_FILLED);
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            int filledCount = rs.getInt(1);
+            rs.close();
+            ConnectionHelper.closeQuietly(ps);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T5b.2", "AUDIT_LOG has ORDER_FILLED events",
+                filledCount > 0, "count=" + filledCount);
+        } catch (Exception e) {
+            assertTest("T5b.2", "ORDER_FILLED audit events", false, e.getMessage());
+        }
+
+        // T5b.3 - AUDIT_LOG has ORDER_REJECTED events
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM AUDIT_LOG WHERE EVENT_TYPE = ?");
+            ps.setString(1, AuditEvent.EVENT_ORDER_REJECTED);
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            int rejectedCount = rs.getInt(1);
+            rs.close();
+            ConnectionHelper.closeQuietly(ps);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T5b.3", "AUDIT_LOG has ORDER_REJECTED events",
+                rejectedCount > 0, "count=" + rejectedCount);
+        } catch (Exception e) {
+            assertTest("T5b.3", "ORDER_REJECTED audit events", false, e.getMessage());
+        }
+
+        // T5b.4 - BILLING_LEDGER has entries for filled orders
+        try {
+            int billingCount = countRecords("BILLING_LEDGER");
+            assertTest("T5b.4", "BILLING_LEDGER has entries after filled orders",
+                billingCount > 0, "billing_count=" + billingCount);
+        } catch (Exception e) {
+            assertTest("T5b.4", "BILLING_LEDGER entries", false, e.getMessage());
+        }
+
+        // T5b.5 - BILLING_LEDGER commission reflects tier-based rates
+        try {
+            Connection conn = ConnectionHelper.getConnection();
+            Statement stmt = conn.createStatement();
+            // C001 is GOLD tier (rate=0.01), order was 500 MSFT @ ~$25.75
+            ResultSet rs = stmt.executeQuery(
+                "SELECT GROSS_AMOUNT, COMMISSION_AMOUNT FROM BILLING_LEDGER WHERE ORDER_ID = 'ORD-TEST-001'");
+            boolean found = false;
+            boolean rateCorrect = false;
+            if (rs.next()) {
+                found = true;
+                double gross = rs.getDouble("GROSS_AMOUNT");
+                double commission = rs.getDouble("COMMISSION_AMOUNT");
+                // GOLD tier rate is 0.01 (1%)
+                double expectedRate = CommissionCalculator.getRate(Client.TIER_GOLD);
+                double expectedCommission = gross * expectedRate;
+                rateCorrect = Math.abs(commission - expectedCommission) < 0.01;
+            }
+            rs.close();
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+            assertTest("T5b.5", "BILLING_LEDGER: C001 (GOLD) commission matches tier rate (1%)",
+                found && rateCorrect,
+                "found=" + found + ", rateCorrect=" + rateCorrect);
+        } catch (Exception e) {
+            assertTest("T5b.5", "Billing tier-based commission", false, e.getMessage());
+        }
+
+        // T5b.6 - CommissionCalculator unit test: tier rates
+        try {
+            boolean platinum = CommissionCalculator.getRate(Client.TIER_PLATINUM) == 0.005;
+            boolean gold = CommissionCalculator.getRate(Client.TIER_GOLD) == 0.010;
+            boolean silver = CommissionCalculator.getRate(Client.TIER_SILVER) == 0.015;
+            boolean bronze = CommissionCalculator.getRate(Client.TIER_BRONZE) == 0.020;
+            boolean defaultRate = CommissionCalculator.getRate(null) == 0.020;
+            assertTest("T5b.6", "CommissionCalculator: tier rates PLATINUM<GOLD<SILVER<BRONZE",
+                platinum && gold && silver && bronze && defaultRate,
+                "P=" + CommissionCalculator.getRate(Client.TIER_PLATINUM)
+                + " G=" + CommissionCalculator.getRate(Client.TIER_GOLD)
+                + " S=" + CommissionCalculator.getRate(Client.TIER_SILVER)
+                + " B=" + CommissionCalculator.getRate(Client.TIER_BRONZE));
+        } catch (Exception e) {
+            assertTest("T5b.6", "CommissionCalculator tier rates", false, e.getMessage());
+        }
+
+        // T5b.7 - AuditEvent XML round-trip
+        try {
+            AuditEvent original = new AuditEvent();
+            original.setEventType(AuditEvent.EVENT_ORDER_FILLED);
+            original.setSourceSystem(AuditEvent.SOURCE_ORDER_ENGINE);
+            original.setEntityType(AuditEvent.ENTITY_ORDER);
+            original.setEntityId("ORD-RT-001");
+            original.setDescription("test round trip");
+            original.setUserId("C001");
+
+            String xml = XmlHelper.marshalAuditEvent(original);
+            AuditEvent roundTripped = XmlHelper.unmarshalAuditEvent(xml);
+
+            boolean match = AuditEvent.EVENT_ORDER_FILLED.equals(roundTripped.getEventType())
+                && AuditEvent.SOURCE_ORDER_ENGINE.equals(roundTripped.getSourceSystem())
+                && AuditEvent.ENTITY_ORDER.equals(roundTripped.getEntityType())
+                && "ORD-RT-001".equals(roundTripped.getEntityId())
+                && "C001".equals(roundTripped.getUserId());
+
+            assertTest("T5b.7", "AuditEvent XML marshal->unmarshal round-trip",
+                match, "entityId=" + roundTripped.getEntityId());
+        } catch (Exception e) {
+            assertTest("T5b.7", "AuditEvent XML round-trip", false, e.getMessage());
         }
 
         System.out.println();
@@ -1087,6 +1240,8 @@ public class EndToEndTest {
             conn = ConnectionHelper.getConnection();
             stmt = conn.createStatement();
             // Order matters: child tables first (FK constraints)
+            stmt.executeUpdate("DELETE FROM BILLING_LEDGER WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
+            stmt.executeUpdate("DELETE FROM AUDIT_LOG WHERE ENTITY_ID LIKE 'ORD-TEST-%' OR ENTITY_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM SETTLEMENT_RECORDS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM NOTIFICATIONS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM TRADE_ORDERS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");

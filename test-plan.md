@@ -1,7 +1,7 @@
 # BigCorp End-to-End Test Plan
 
 ## Overview
-Comprehensive test to verify the full trade order lifecycle across all 6 modules.
+Comprehensive test to verify the full trade order lifecycle across all 7 modules.
 Infrastructure: embedded HSQLDB + ActiveMQ + local SFTP fallback.
 
 ---
@@ -14,7 +14,7 @@ ant clean clean-all
 ant deps
 ant compile
 ```
-**Verify:** BUILD SUCCESSFUL, all 7 compile targets pass (common, tradedesk, orderengine, pricing, notifications, settlement, demo)
+**Verify:** BUILD SUCCESSFUL, all 8 compile targets pass (common, tradedesk, orderengine, pricing, notifications, settlement, audit, demo)
 
 ### T1.2 — Package artifacts
 ```
@@ -24,7 +24,7 @@ ant package
 
 ### T1.3 — Database bootstrap
 **Verify:**
-- 6 tables created (CLIENTS, TRADE_ORDERS, NOTIFICATIONS, SETTLEMENT_RECORDS, AUDIT_LOG, PRICING_CACHE)
+- 7 tables created (CLIENTS, TRADE_ORDERS, NOTIFICATIONS, SETTLEMENT_RECORDS, AUDIT_LOG, PRICING_CACHE, BILLING_LEDGER)
 - 5 clients inserted (C001–C005)
 - 7 pricing records inserted (MSFT, IBM, ORCL, SUNW, CSCO, INTC, DELL)
 
@@ -97,7 +97,7 @@ ant package
 **Verify:**
 - Finds all FILLED orders
 - Creates SETTLEMENT_RECORDS with correct amounts (qty * price)
-- Commission = 2% of total value
+- Commission = tier-based rate (PLATINUM 0.5%, GOLD 1.0%, SILVER 1.5%, BRONZE 2.0%)
 - Settlement date = trade date + 3 days (doesn't skip weekends — known bug)
 - Generates XML file in ./sftp-outbound/
 - Generates flat file (.dat) in ./sftp-outbound/
@@ -123,6 +123,32 @@ ant package
 **Pre-condition:** No FILLED orders in DB (all already settled)
 **Action:** Run BatchProcessor.processBatch() again
 **Verify:** "No orders to process. Batch complete." — no files generated
+
+---
+
+## Phase 4b: Audit & Billing Verification
+
+### T4b.1 — AUDIT_LOG populated after order processing
+**Verify:** AUDIT_LOG table has entries with correct EVENT_TYPE (ORDER_FILLED, ORDER_REJECTED)
+
+### T4b.2 — BILLING_LEDGER populated for filled orders
+**Verify:**
+- BILLING_LEDGER has entries for each filled order
+- GROSS_AMOUNT = quantity * price
+- COMMISSION_AMOUNT = GROSS_AMOUNT * tier-based rate
+- NET_AMOUNT = GROSS_AMOUNT + COMMISSION_AMOUNT
+- STATUS = 'CHARGED'
+
+### T4b.3 — Commission tier rates correct
+**Verify:**
+- PLATINUM client (C002) gets 0.5% commission
+- GOLD client (C001) gets 1.0% commission
+- SILVER client (C003) gets 1.5% commission
+- BRONZE client (C005) gets 2.0% commission
+
+### T4b.4 — AuditEvent XML round-trip
+**Action:** Create AuditEvent, marshal to XML, unmarshal back
+**Verify:** All fields preserved (eventType, sourceSystem, entityType, entityId, userId)
 
 ---
 
@@ -215,9 +241,9 @@ ant run-demo
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:
 1. Boots up infrastructure (HSQLDB + ActiveMQ)
-2. Starts order-engine and notification-gateway listeners
+2. Starts order-engine, notification-gateway, and audit-service listeners
 3. Runs test scenarios sequentially
-4. Asserts expected outcomes via DB queries
+4. Asserts expected outcomes via DB queries (incl. AUDIT_LOG and BILLING_LEDGER)
 5. Validates generated files
 6. Reports pass/fail for each test case
 7. Exits cleanly

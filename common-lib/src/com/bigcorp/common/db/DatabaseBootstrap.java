@@ -151,6 +151,20 @@ public class DatabaseBootstrap {
                 ")"
             );
 
+            // BILLING_LEDGER - commission charges per order
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS BILLING_LEDGER (" +
+                "  ENTRY_ID INTEGER IDENTITY PRIMARY KEY," +
+                "  ORDER_ID VARCHAR(30) NOT NULL," +
+                "  CLIENT_ID VARCHAR(20) NOT NULL," +
+                "  GROSS_AMOUNT DECIMAL(15,4) NOT NULL," +
+                "  COMMISSION_AMOUNT DECIMAL(10,4) NOT NULL," +
+                "  NET_AMOUNT DECIMAL(15,4) NOT NULL," +
+                "  CHARGED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  STATUS VARCHAR(15) DEFAULT 'CHARGED'" +
+                ")"
+            );
+
             // PRICING_CACHE - used by pricing service
             stmt.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS PRICING_CACHE (" +
