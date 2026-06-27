@@ -394,6 +394,38 @@ ant run-demo
 
 ---
 
+## Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+
+### T16.1 — MarketHaltRule passes when market is not halted (default)
+**Action:** Clear system property `bigcorp.market.halted`, create order for C001, evaluate via MarketHaltRule
+**Verify:**
+- Rule returns true (passes)
+- Context attribute `market_halt_checked` = Boolean.TRUE
+
+### T16.2 — MarketHaltRule rejects when bigcorp.market.halted=true
+**Action:** Set system property `bigcorp.market.halted=true`, create order, evaluate via MarketHaltRule, then clear property
+**Verify:**
+- Rule returns false (rejects)
+- Context is rejected with reason containing "REG-2011-001"
+
+### T16.3 — ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')
+**Action:** Create order for C001 (KILL_SWITCH='N' by default), evaluate via ClientKillSwitchRule
+**Verify:**
+- Rule returns true (passes)
+- Context attribute `kill_switch_checked` = Boolean.TRUE
+
+### T16.4 — Verify RULE_AUDIT_LOG is populated after rule decision logging
+**Action:** Log a rule decision via RuleAuditLogger.logRuleDecision(), query RULE_AUDIT_LOG
+**Verify:** At least 1 row in RULE_AUDIT_LOG for the test order
+
+### T16.5 — Verify audit trail contains entries for each rule evaluated
+**Action:** Create mini RuleEngine with MarketHaltRule, evaluate an order, query RULE_AUDIT_LOG
+**Verify:** At least 1 audit entry exists for the evaluated order (1 per rule in engine)
+
+**Known issue / JIRA-4102:** T10.2 count now 12 (was 10, was 8, was 5, was 4) — MarketHaltRule and ClientKillSwitchRule added to config.
+
+---
+
 ## Execution Approach
 
 All tests will be implemented as a single `EndToEndTest.java` harness that:

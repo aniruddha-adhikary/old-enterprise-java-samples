@@ -15,6 +15,9 @@
   Since: 2003 Q1
 -->
 <rules>
+  <!-- Circuit breaker and kill switch rules - added after 2011 flash crash (REG-2011-001/002) -->
+  <rule class="com.bigcorp.common.rules.impl.MarketHaltRule" priority="120" active="true"/>
+  <rule class="com.bigcorp.common.rules.impl.ClientKillSwitchRule" priority="118" active="true"/>
   <!-- Compliance rules - added after 2005 regulatory incident -->
   <rule class="com.bigcorp.common.rules.impl.KYCStatusRule" priority="115" active="true"/>
   <rule class="com.bigcorp.common.rules.impl.DailyVolumeLimitRule" priority="110" active="true"/>

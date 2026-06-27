@@ -24,6 +24,9 @@ import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
 import com.bigcorp.common.rules.impl.KYCStatusRule;
 import com.bigcorp.common.rules.impl.VolumeDiscountRule;
 import com.bigcorp.common.rules.impl.LoyaltyBonusRule;
+import com.bigcorp.common.rules.impl.MarketHaltRule;
+import com.bigcorp.common.rules.impl.ClientKillSwitchRule;
+import com.bigcorp.common.rules.RuleAuditLogger;
 import com.bigcorp.common.xml.StringXmlBuilder;
 import com.bigcorp.common.xml.XmlHelper;
 import com.bigcorp.audit.consumer.AuditListener;
@@ -151,6 +154,9 @@ public class EndToEndTest {
 
             // Phase 15: Wave 6 — Volume Discounts, Loyalty Bonus, Special-Client Sprawl
             phase15_wave6VolumeAndLoyalty();
+
+            // Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+            phase16_wave7AuditAndCircuitBreakers();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -2075,6 +2081,222 @@ public class EndToEndTest {
         System.out.println();
     }
 
+    // ====================================================================
+    // Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches
+    // ====================================================================
+
+    private static void phase16_wave7AuditAndCircuitBreakers() {
+        System.out.println("=== Phase 16 (FINAL): Wave 7 — Audit Trail, Circuit Breakers, Kill Switches ===");
+        System.out.println();
+
+        // T16.1 - MarketHaltRule passes when market is not halted (default)
+        try {
+            // Ensure market halt property is not set (default = false)
+            System.clearProperty("bigcorp.market.halted");
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-001");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            MarketHaltRule haltRule = new MarketHaltRule();
+            boolean result = haltRule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("market_halt_checked");
+            assertTest("T16.1", "MarketHaltRule passes when market is not halted (default)",
+                result && Boolean.TRUE.equals(checked),
+                "passed=" + result + " market_halt_checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T16.1", "MarketHaltRule default (not halted)", false, e.getMessage());
+        }
+
+        // T16.2 - MarketHaltRule rejects when bigcorp.market.halted=true
+        try {
+            // Set system property to halt the market
+            System.setProperty("bigcorp.market.halted", "true");
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-002");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            MarketHaltRule haltRule = new MarketHaltRule();
+            boolean result = haltRule.evaluate(ctx);
+
+            boolean rejected = ctx.isRejected();
+            String reason = ctx.getRejectionReason();
+            boolean reasonContainsREG = (reason != null && reason.contains("REG-2011-001"));
+
+            assertTest("T16.2", "MarketHaltRule rejects when market is halted",
+                !result && rejected && reasonContainsREG,
+                "passed=" + result + " rejected=" + rejected + " reason=" + reason);
+        } catch (Exception e) {
+            assertTest("T16.2", "MarketHaltRule halted rejection", false, e.getMessage());
+        } finally {
+            // Always clear the property so it doesn't affect other tests
+            System.clearProperty("bigcorp.market.halted");
+        }
+
+        // T16.3 - ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')
+        try {
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-003");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+            ClientKillSwitchRule killRule = new ClientKillSwitchRule();
+            boolean result = killRule.evaluate(ctx);
+
+            Object checked = ctx.getAttribute("kill_switch_checked");
+            assertTest("T16.3", "ClientKillSwitchRule passes for normal client (KILL_SWITCH='N')",
+                result && Boolean.TRUE.equals(checked),
+                "passed=" + result + " kill_switch_checked=" + checked);
+        } catch (Exception e) {
+            assertTest("T16.3", "ClientKillSwitchRule normal client", false, e.getMessage());
+        }
+
+        // T16.4 - Verify RULE_AUDIT_LOG is populated after running rules
+        // We run a simple rule through the engine and check the audit log
+        try {
+            // Clear any previous audit log entries for our test order
+            Connection conn = null;
+            Statement stmt = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID LIKE 'WAVE7-%'");
+            } finally {
+                ConnectionHelper.closeQuietly(stmt);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            // Log a rule decision manually and verify it was written
+            RuleAuditLogger.logRuleDecision("TestRule", "WAVE7-AUDIT", "C001", true, "Test audit entry");
+
+            int auditCount = 0;
+            conn = null;
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-AUDIT'"
+                );
+                rs = ps.executeQuery();
+                if (rs.next()) {
+                    auditCount = rs.getInt(1);
+                }
+            } finally {
+                ConnectionHelper.closeQuietly(rs);
+                ConnectionHelper.closeQuietly(ps);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            assertTest("T16.4", "RULE_AUDIT_LOG populated after rule decision logging",
+                auditCount > 0,
+                "audit_count=" + auditCount);
+        } catch (Exception e) {
+            assertTest("T16.4", "RULE_AUDIT_LOG populated", false, e.getMessage());
+        }
+
+        // T16.5 - Verify audit trail contains entries for each rule evaluated
+        // Run a mini rule engine evaluation and check that each rule produced an audit entry
+        try {
+            // Clean up first
+            Connection conn = null;
+            Statement stmt = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                stmt = conn.createStatement();
+                stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-FULL'");
+            } finally {
+                ConnectionHelper.closeQuietly(stmt);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            // Create a fresh rule engine with just MarketHaltRule
+            RuleEngine miniEngine = RuleEngine.getInstance();
+            // Reset to get a clean engine
+            RuleEngine.reset();
+            miniEngine = RuleEngine.getInstance();
+
+            miniEngine.addRule(new MarketHaltRule());
+
+            Client client = new Client();
+            client.setClientId("C001");
+            client.setTier(Client.TIER_GOLD);
+            client.setMaxOrderValue(500000);
+            client.setActive(true);
+
+            TradeOrder order = new TradeOrder();
+            order.setOrderId("WAVE7-FULL");
+            order.setClientId("C001");
+            order.setQuantity(100);
+            order.setRequestedPrice(25.00);
+
+            RuleContext ctx = new RuleContext(order, client);
+
+            // Ensure market is not halted for this test
+            System.clearProperty("bigcorp.market.halted");
+            miniEngine.evaluate(ctx);
+
+            // Reset engine so other tests aren't affected
+            RuleEngine.reset();
+
+            // Check RULE_AUDIT_LOG for entries
+            int auditEntries = 0;
+            conn = null;
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                conn = ConnectionHelper.getConnection();
+                ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM RULE_AUDIT_LOG WHERE ORDER_ID = 'WAVE7-FULL'"
+                );
+                rs = ps.executeQuery();
+                if (rs.next()) {
+                    auditEntries = rs.getInt(1);
+                }
+            } finally {
+                ConnectionHelper.closeQuietly(rs);
+                ConnectionHelper.closeQuietly(ps);
+                ConnectionHelper.closeQuietly(conn);
+            }
+
+            assertTest("T16.5", "Audit trail contains entries for each rule evaluated via RuleEngine",
+                auditEntries >= 1,
+                "audit_entries=" + auditEntries + " (expected >= 1 for MarketHaltRule)");
+        } catch (Exception e) {
+            assertTest("T16.5", "Audit trail entries per rule", false, e.getMessage());
+        }
+
+        System.out.println();
+    }
+
     /**
      * Simple test rule used by Phase 14 priority ordering tests.
      * Always passes, records its name in context messages via execute().
@@ -2113,6 +2335,7 @@ public class EndToEndTest {
             stmt = conn.createStatement();
             // Order matters: child tables first (FK constraints)
             stmt.executeUpdate("DELETE FROM BILLING_LEDGER WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
+            stmt.executeUpdate("DELETE FROM RULE_AUDIT_LOG WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%' OR ORDER_ID LIKE 'WAVE7-%'");
             stmt.executeUpdate("DELETE FROM AUDIT_LOG WHERE ENTITY_ID LIKE 'ORD-TEST-%' OR ENTITY_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM SETTLEMENT_RECORDS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM NOTIFICATIONS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");

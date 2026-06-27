@@ -81,6 +81,7 @@ public class DatabaseBootstrap {
                 "  MAX_ORDER_VALUE DECIMAL(15,2) DEFAULT 100000.00," +
                 "  ACTIVE INTEGER DEFAULT 1," +
                 "  KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'," +
+                "  KILL_SWITCH VARCHAR(1) DEFAULT 'N'," +
                 "  CREATED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                 ")"
             );
@@ -90,6 +91,16 @@ public class DatabaseBootstrap {
             try {
                 stmt.executeUpdate(
                     "ALTER TABLE CLIENTS ADD COLUMN KYC_STATUS VARCHAR(20) DEFAULT 'APPROVED'"
+                );
+            } catch (Exception alreadyExists) {
+                // column already exists, ignore
+            }
+
+            // Add KILL_SWITCH column if table already exists without it
+            // Per-client kill switch for rapid risk response (REG-2011-002)
+            try {
+                stmt.executeUpdate(
+                    "ALTER TABLE CLIENTS ADD COLUMN KILL_SWITCH VARCHAR(1) DEFAULT 'N'"
                 );
             } catch (Exception alreadyExists) {
                 // column already exists, ignore
@@ -174,6 +185,19 @@ public class DatabaseBootstrap {
                 "  NET_AMOUNT DECIMAL(15,4) NOT NULL," +
                 "  CHARGED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
                 "  STATUS VARCHAR(15) DEFAULT 'CHARGED'" +
+                ")"
+            );
+
+            // RULE_AUDIT_LOG - Every rule decision logged for regulatory compliance (REG-2011-003)
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS RULE_AUDIT_LOG (" +
+                "  AUDIT_ID INTEGER IDENTITY PRIMARY KEY," +
+                "  RULE_NAME VARCHAR(50) NOT NULL," +
+                "  ORDER_ID VARCHAR(30)," +
+                "  CLIENT_ID VARCHAR(20)," +
+                "  RESULT VARCHAR(10) NOT NULL," +
+                "  EVALUATION_TIME TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  DETAILS VARCHAR(500)" +
                 ")"
             );
 

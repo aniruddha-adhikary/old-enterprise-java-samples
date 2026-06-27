@@ -116,6 +116,17 @@ public class RuleEngine {
     public boolean evaluate(RuleContext context) {
         System.out.println("RuleEngine: evaluating " + rules.size() + " rules");
 
+        // Audit trail added for regulatory compliance (REG-2011-003) — must never block trading
+        // Extract orderId and clientId for audit logging (defensive null checks)
+        String auditOrderId = null;
+        String auditClientId = null;
+        if (context != null && context.getOrder() != null) {
+            auditOrderId = context.getOrder().getOrderId();
+        }
+        if (context != null && context.getClient() != null) {
+            auditClientId = context.getClient().getClientId();
+        }
+
         Iterator it = rules.iterator();
         while (it.hasNext()) {
             Rule rule = (Rule) it.next();
@@ -126,6 +137,13 @@ public class RuleEngine {
             // is set on the XML element, not the Rule object.
             if (!rule.isActive()) {
                 System.out.println("  SKIP (inactive): " + rule.getName());
+                // Audit trail: log skipped rules too (REG-2011-003)
+                try {
+                    RuleAuditLogger.logRuleSkipped(rule.getName(), auditOrderId, auditClientId);
+                } catch (Exception auditEx) {
+                    // Audit logging failure must NEVER prevent order processing
+                    System.err.println("  WARN: audit log failed for skip: " + auditEx.getMessage());
+                }
                 continue;
             }
 
@@ -148,8 +166,28 @@ public class RuleEngine {
             } catch (Exception e) {
                 // rule threw an exception - treat as failure
                 System.err.println("  ERROR in rule " + rule.getName() + ": " + e.getMessage());
+                // Audit trail: log rule error as FAIL (REG-2011-003)
+                try {
+                    RuleAuditLogger.logRuleDecision(rule.getName(), auditOrderId, auditClientId,
+                        false, "Rule threw exception: " + e.getMessage());
+                } catch (Exception auditEx) {
+                    System.err.println("  WARN: audit log failed: " + auditEx.getMessage());
+                }
                 context.reject("Rule error: " + rule.getName() + " - " + e.getMessage());
                 return false;
+            }
+
+            // Audit trail: log every rule decision (REG-2011-003)
+            try {
+                String auditDetails = passed ? "Rule passed" : "Rule failed";
+                if (result != null && result.getMessage() != null) {
+                    auditDetails = result.getMessage();
+                }
+                RuleAuditLogger.logRuleDecision(rule.getName(), auditOrderId, auditClientId,
+                    passed, auditDetails);
+            } catch (Exception auditEx) {
+                // Audit logging failure must NEVER prevent order processing
+                System.err.println("  WARN: audit log failed for " + rule.getName() + ": " + auditEx.getMessage());
             }
 
             if (passed) {

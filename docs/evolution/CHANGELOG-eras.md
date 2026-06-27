@@ -98,3 +98,18 @@ Each entry records one wave of the evolution simulation. See `SIMULATION.md` for
 - New context attributes: volume_discount, volume_discount_applied, loyalty_bonus
 
 ---
+
+## 2011 Q4 — Audit everything / circuit breakers — engineer: compliance-bolt-on
+
+**Wave 7 (FINAL)**
+
+- Added MarketHaltRule (priority 120): system-wide circuit breaker via bigcorp.market.halted property (REG-2011-001)
+- Added ClientKillSwitchRule (priority 118): per-client trading suspension via KILL_SWITCH column (REG-2011-002)
+- Added RuleAuditLogger: logs every rule decision to RULE_AUDIT_LOG table (REG-2011-003)
+- Modified RuleEngine.evaluate() to audit-log each rule result
+- Added KILL_SWITCH column to CLIENTS, RULE_AUDIT_LOG table to DatabaseBootstrap
+- Defensive: audit logging wrapped in try/catch to never block trading
+- Final rule count: 13 rules spanning 10 years of incremental additions
+- Known issue / JIRA-4102: T10.2 count now 12 (was 10, was 8, was 5, was 4)
+
+---
