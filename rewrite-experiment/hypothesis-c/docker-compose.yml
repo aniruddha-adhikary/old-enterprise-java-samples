@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/data/bigcorp.db
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SFTP_HOST=sftp
+      - SFTP_PORT=22
+      - SFTP_USER=bigcorp
+      - SFTP_PASS=settlement
+    volumes:
+      - app-data:/data
+      - sftp-outbound:/sftp-outbound
+    depends_on:
+      - rabbitmq
+      - mailhog
+      - sftp
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  sftp:
+    image: atmoz/sftp:latest
+    ports:
+      - "2222:22"
+    command: bigcorp:settlement:::incoming
+    volumes:
+      - sftp-incoming:/home/bigcorp/incoming
+
+volumes:
+  app-data:
+  sftp-outbound:
+  sftp-incoming:

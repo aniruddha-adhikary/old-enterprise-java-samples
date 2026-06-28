@@ -1,0 +1,67 @@
+You are a code archaeologist. Your task is to reconstruct the complete business logic of a legacy enterprise Java application using Joern (a code analysis tool) and source code reading.
+
+## Setup
+
+The repo is at /home/ubuntu/repos/old-enterprise-java-samples. Joern is installed at /home/ubuntu/bin/joern/joern-cli.
+
+```bash
+export PATH="/home/ubuntu/bin/joern/joern-cli:$PATH"
+```
+
+A pre-built Code Property Graph (CPG) exists at joern-workspace/bigcorp.cpg. Pre-computed Joern analysis reports are in joern-workspace/output/ — START by reading those files.
+
+## IMPORTANT RESTRICTIONS
+
+- Do NOT read README.md, test-plan.md, CHANGELOG-eras.md, SIMULATION.md, or anything in docs/ or .agents/ directories
+- Work ONLY from Java source code files, XML configs, properties files, SQL schemas, and Joern analysis output
+- Your goal is to prove that Joern + source reading can reconstruct business logic without any documentation
+
+## Your Deliverable
+
+Create a file: joern-workspace/output/RECONSTRUCTED-BUSINESS-LOGIC.md
+
+It must contain these sections:
+
+### 1. System Purpose
+What does this system do? What business domain? Who are the users?
+
+### 2. Domain Model
+Core entities, their attributes, relationships, and state machines (status transitions).
+
+### 3. Business Rules (be specific — include actual values)
+For EACH rule: name, what it checks, pass/fail effects, thresholds/limits, priority, special cases.
+
+### 4. Business Processes
+Trace the complete lifecycle: order entry → validation → pricing → execution → notification → settlement → reconciliation.
+
+### 5. Financial Logic
+Commission rates by tier, pricing deviation thresholds, settlement calculations. Include actual percentages and formulas.
+
+### 6. Integration Architecture
+JMS queues (names, producers, consumers), SOAP endpoints, SFTP paths, email dispatch, HTTP APIs.
+
+### 7. Anomalies
+Inconsistencies, duplicated logic, dead code, intentional bugs, priority ordering issues.
+
+## Strategy
+
+1. Read the pre-computed Joern output files in joern-workspace/output/ (they contain extracted patterns)
+2. Use those reports to identify key classes and methods
+3. Read the actual Java source files for details Joern couldn't capture
+4. Read config/rules.xml for rule definitions
+5. Read SQL schema from DatabaseBootstrap.java
+6. Write custom Joern queries if needed for deeper investigation
+7. Cross-reference everything to build a complete picture
+
+## Available Joern Output Files
+
+- 01-explore-cpg.txt — Full class/method inventory
+- 02-domain-models.txt — Domain entity extraction
+- 03-business-rules.txt — Rule analysis (thresholds, conditions)
+- 04-data-flows.txt — Data flow, SQL, JMS, entry points
+- 05-architectural-patterns.txt — Design patterns
+- 06-commission-and-pricing.txt — Financial logic
+- 07-integration-topology.txt — Integration mapping
+- 08-anomalies-and-debt.txt — Code smells and debt
+
+Be thorough and specific. Include actual numbers, queue names, status codes, rates. Note gaps where business logic could NOT be determined from code alone.
