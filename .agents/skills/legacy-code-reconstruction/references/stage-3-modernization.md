@@ -18,7 +18,7 @@ The isolation is intentional. If the builder can reconstruct a working system fr
 
 ### Tech Stack Selection
 
-Choose based on domain analysis. In our experiments, all three agents independently chose TypeScript/Express/PostgreSQL for a financial trading system. Good defaults for enterprise Java rewrites:
+Choose based on domain and team context. In the worked example, independent agents converged on TypeScript/Express/PostgreSQL for a financial trading system — one data point, not a recommendation. Reasonable default mappings for enterprise Java rewrites:
 
 | Legacy | Modern Equivalent |
 |--------|------------------|
@@ -49,25 +49,22 @@ For each known bug in spec.json:
 
 ## Output Structure
 
+Create **one module per discovered community/module** from the profile + `GRAPH_REPORT.md`, plus cross-cutting infrastructure. The exact domain folders depend on the codebase — below, the domain modules are illustrative (from the worked example); the non-italic ones are structural and apply to most rewrites:
+
 ```
 rewrite/
 ├── ARCHITECTURE.md          # Design decisions, tech stack, community-informed decomposition
 ├── src/
 │   ├── domain/              # Entities from spec.json entities array
 │   ├── rules/               # Rule engine + all rules from spec.json rules array
-│   ├── pricing/             # Financial calculations from spec.json financials
-│   ├── settlement/          # Settlement batch from spec.json settlement
-│   ├── notifications/       # Notification dispatch
-│   ├── risk/                # Risk engine (VaR)
-│   ├── derivatives/         # FX/options processing
-│   ├── audit/               # Audit & billing
-│   ├── regulatory/          # Report generation
-│   ├── integration/         # Message broker, SFTP, SMTP adapters
-│   ├── api/                 # REST API (replaces servlets)
+│   ├── <module-a>/          # one folder per discovered module (e.g. pricing, settlement, risk…)
+│   ├── <module-b>/          #   named from the calibration profile, NOT a fixed list
+│   ├── integration/         # Message broker, SFTP, SMTP, HTTP adapters (per discovered protocols)
+│   ├── api/                 # REST/gRPC API (replaces servlets)
 │   └── config/              # Environment-based configuration
-├── tests/                   # Tests covering all rules, financials, settlement
+├── tests/                   # Tests covering all rules, financials, state machines
 ├── schema.sql               # Database schema from spec.json entities
-├── docker-compose.yml       # Infrastructure (DB, message broker, mail)
+├── docker-compose.yml       # Infrastructure (DB, message broker, mail) — only what's actually used
 └── package.json             # Build config
 ```
 
@@ -81,46 +78,36 @@ The architecture document must:
 5. Show the integration mapping (legacy protocol → modern protocol)
 6. Document dead code patterns from Joern attribute analysis
 
-## Implementation Checklist
+## Implementation Checklist (generic — instantiate against your spec.json)
 
 ### Rules (from spec.json rules array)
-- [ ] All rules implemented with exact priority values
-- [ ] Rule engine preserves chain-of-responsibility pattern
-- [ ] Default sort order matches legacy (document if descending)
-- [ ] evaluate() failure stops chain; execute() failure is non-fatal
-- [ ] Surveillance rules FLAG but do not REJECT
-- [ ] DB-dependent rules fail open on errors
+- [ ] Every rule implemented with its exact priority value
+- [ ] Rule engine preserves the legacy evaluation pattern (often chain-of-responsibility)
+- [ ] Default sort/evaluation order matches legacy exactly (document any non-obvious order, e.g. descending)
+- [ ] Reject-vs-flag behavior preserved per rule (surveillance/monitoring rules typically flag, not reject)
+- [ ] Failure semantics preserved (which failures stop the chain; which fail open vs closed)
 
 ### Financial Logic (from spec.json financials)
-- [ ] Commission rates match per-tier values exactly
-- [ ] Multiple commission rate sources preserved (if discrepancy is "by design")
-- [ ] FX rates match hardcoded values (note: rates are intentionally stale)
-- [ ] VaR formula uses exact z-score, holding period, trading days
-- [ ] Price deviation threshold correct
+- [ ] Every rate/spread/tier value matches the legacy literal exactly
+- [ ] Where two sources disagree by design, both preserved and the discrepancy documented
+- [ ] Stale/hardcoded values preserved as-is if the legacy behavior depended on them
+- [ ] Every formula uses the exact constants (z-scores, holding periods, day counts, thresholds)
 
 ### Integration (from spec.json integrations)
-- [ ] All queue names preserved (even phantom/unused ones)
-- [ ] Fallback chains preserved (SOAP → DB → hardcoded)
-- [ ] Local fallback directories for SFTP
-- [ ] Dev mode for email (log instead of send)
+- [ ] All destination names preserved (including phantom/unused ones, flagged as such)
+- [ ] Fallback chains preserved (e.g. remote service → DB → hardcoded default)
+- [ ] Local/dev fallbacks preserved (e.g. local dir for SFTP, log-instead-of-send for email)
 
-### Special Clients (from spec.json specialClients)
-- [ ] All overrides moved from hardcoded to configurable
+### Overrides / special cases (from spec.json specialClients or equivalent)
+- [ ] All hardcoded per-entity overrides moved to configuration
 - [ ] Default values match legacy behavior
 
 ### Tests
 - [ ] Every business rule has at least one test
-- [ ] Commission calculation tested for each tier
-- [ ] VaR formula tested with known inputs
-- [ ] Settlement date calculation tested (including the weekend non-skip bug if preserved)
-- [ ] State machine transitions tested
+- [ ] Every financial calculation tested with known inputs/outputs
+- [ ] Every state-machine transition tested
+- [ ] Each preserved bug/anomaly has a test pinning the legacy behavior
 
 ## Expected Results
 
-From our experiments:
-- **~3,000 LOC** source code
-- **~1,000 LOC** tests
-- **100+ tests** passing
-- **13 database tables** in schema
-- **30/30** on evaluation criteria when using BRD + spec.json input
-- **~30 minutes** agent runtime
+Scale and runtime depend entirely on the source system's size and complexity, so set expectations from *your* analysis (entity count, rule count, table count from Stage 1), not from a fixed number. See `references/worked-example.md` for the concrete figures the example system produced (LOC, test count, table count, score), as one calibration point.

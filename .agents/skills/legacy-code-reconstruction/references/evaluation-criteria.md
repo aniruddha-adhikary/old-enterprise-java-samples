@@ -1,45 +1,43 @@
-# Evaluation Criteria for Rewrite Hypotheses
+# Evaluation Criteria (generic template)
 
-## Completeness Checklist (scored 0-1 each, total /30)
+Use this to score a reconstruction (BRD/spec) or a rewrite against the legacy system. It is a **template**: derive the concrete checklist items from *your* Stage 1 analysis (the entities, rules, integrations, etc. that calibration and the scripts actually found). For a fully instantiated example, see `worked-example.md`.
 
-### Domain Model (6 points)
-- [ ] TradeOrder with all 12 fields
-- [ ] Client with all 10 fields (including tiers, KYC, killSwitch)
-- [ ] SettlementRecord with all 12 fields
-- [ ] Notification with all 9 fields
-- [ ] State machines: TradeOrder (NEW→FILLED→SETTLED, REJECTED), SettlementRecord (PENDING→GENERATED→UPLOADED→CONFIRMED/FAILED/DISCREPANCY)
-- [ ] Relationships: Client 1:N TradeOrder, TradeOrder 1:1 SettlementRecord, TradeOrder 1:N Notification
+Score each dimension as `captured / total`, where `total` is the count discovered in Stage 1. A perfect score means the reconstruction lost nothing relative to the code.
 
-### Business Rules (8 points)
-- [ ] All 17 rules present with correct priorities
-- [ ] Correct reject vs flag behavior for each
-- [ ] MaxOrderValue with 10% buffer (BUFFER_MULTIPLIER=1.10)
-- [ ] Reversed priority comparator bug preserved (descending order)
-- [ ] ShortSaleRule added programmatically (not in XML config)
-- [ ] Surveillance rules (Layering, Spoofing) flag but never reject
-- [ ] PositionLimit threshold: 100,000 shares
-- [ ] DailyVolumeLimit: 50,000 shares per order (misleading name)
+## Dimensions
 
-### Financial Logic (5 points)
-- [ ] Commission rates: PLATINUM 0.5%, GOLD 1.0%, SILVER 1.5%, BRONZE 2.0%
-- [ ] Pricing spreads per tier: PLATINUM 0.1%, GOLD 0.2%, SILVER 0.3%, BRONZE 0.5%
-- [ ] FX rates: EUR 1.10, GBP 1.55, JPY 0.009, CHF 0.72
-- [ ] VaR formula: |notional| * vol * 2.33 * sqrt(1/252)
-- [ ] Price deviation threshold: 10%
+### Domain Model
+- [ ] Every entity present, with **all** fields (count fields from `02-domain-models.sc`; missing fields are the most common loss)
+- [ ] Every state machine with its states and transitions (from `10-state-machines.sc`)
+- [ ] Entity relationships (1:1, 1:N) preserved
 
-### Integration Points (5 points)
-- [ ] All JMS queues (BIGCORP.TRADE.ORDERS, BIGCORP.NOTIFICATIONS, BIGCORP.TRADE.CONFIRMATIONS, BIGCORP.SETTLEMENT.EVENTS)
-- [ ] SOAP pricing service with DB fallback
-- [ ] SFTP settlement file transfer (XML + fixed-width DAT format)
-- [ ] SMTP email notifications
-- [ ] Database (HSQLDB dev / Oracle prod)
+### Business Rules
+- [ ] Every rule present with its correct priority (from `03-business-rules.sc` + the discovered rule interface)
+- [ ] Correct reject-vs-flag behavior per rule
+- [ ] Exact thresholds preserved — including single-digit and "off-by-buffer" values (e.g. a ×1.10 buffer)
+- [ ] Rules registered programmatically (not just from config/XML) are not missed
+- [ ] Misleadingly named rules documented by actual behavior, not by name
 
-### Special Client Logic (3 points)
-- [ ] All 10 client overrides (C001-C010) documented
-- [ ] Loyalty bonus for C001, C002, C003
-- [ ] Henderson zero commission, Acme early access
+### Financial / Calculation Logic
+- [ ] Every rate, spread, and tier value exact (from `06-commission-and-pricing.sc`)
+- [ ] Every formula uses exact constants (z-scores, day counts, holding periods, deviation thresholds)
+- [ ] Stale-by-design or duplicated values preserved and flagged
 
-### Anomalies Preserved (3 points)
-- [ ] T+3 settlement doesn't skip weekends
-- [ ] VALIDATED and PRICED statuses defined but never used
-- [ ] `active` XML attribute not applied to Rule objects
+### Integration Points
+- [ ] Every queue/topic named (from `07-integration-topology.sc`), including unused/phantom ones
+- [ ] Every external protocol covered (SOAP/REST, SFTP, SMTP, JDBC, …) with fallback chains
+- [ ] Connection/config parameters captured
+
+### Special / Override Cases
+- [ ] Every per-entity override (per-client, per-account, …) documented with its values
+
+### Anomalies & Known Bugs Preserved
+- [ ] Behavior-affecting bugs identified and flagged with a preserve/fix disposition
+- [ ] Defined-but-never-used states/attributes noted (from scripts 10 and 12)
+- [ ] Config attributes that are read but not applied, or set but never read, noted
+
+## Scoring guidance
+
+- Weight dimensions by the system's nature (a trading system weights financial logic heavily; a workflow engine weights state machines).
+- A reconstruction that scores well on counts but misses *exact values* is not done — exact thresholds/rates are where rewrites silently break.
+- Record the denominators (how many entities/rules/etc. existed) so the score is interpretable.

@@ -1,53 +1,54 @@
-// 09-jira-references.sc — Extract all JIRA ticket references from the codebase
-// Provides traceability between code and issue tracker
+// 09-jira-references.sc — Extract issue-tracker / ticket / regulatory references from the code.
+// Generic: discovers ANY "TOKEN-1234" or "TOKEN-12-34" style marker prefix (JIRA-, REG-,
+// ISO-, project keys, ...) instead of assuming a single tracker. Provides code<->ticket
+// traceability and surfaces evolution/era markers.
+//
+// Optional: pass --param markerPrefixes="JIRA,REG,FOO" to restrict to known prefixes.
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg", markerPrefixes: String = "") = {
   importCpg(cpgFile)
 
   println("=" * 80)
-  println("JIRA REFERENCE EXTRACTION")
+  println("ISSUE / TICKET / REGULATORY MARKERS")
   println("=" * 80)
 
-  // Find all string literals containing JIRA references
-  val jiraPattern = "JIRA-\\d+"
-  val jiraLiterals = cpg.literal.l.filter { lit =>
-    lit.code.matches(".*JIRA-\\d+.*")
+  val markerRe = "[A-Z]{2,}-\\d+(?:-\\d+)*".r
+  val wanted = markerPrefixes.split(",").map(_.trim).filter(_.nonEmpty).toSet
+  // Common encoding/charset tokens that look like markers but aren't tickets.
+  val noise = Set("UTF", "ASCII", "SHA", "MD", "RFC", "UTF8")
+
+  // Collect every marker occurrence (token -> contexts), prefix-filtered if requested.
+  case class Hit(token: String, prefix: String, context: String, method: String, file: String)
+  val hits = cpg.literal.l.flatMap { lit =>
+    markerRe.findAllIn(lit.code.replaceAll("\"", "")).toList.map { tok =>
+      val prefix = tok.takeWhile(_ != '-')
+      Hit(tok, prefix, lit.code.take(120), lit.method.fullName,
+          lit.file.name.l.headOption.getOrElse("unknown"))
+    }
+  }.filter(h => !noise.contains(h.prefix) && (wanted.isEmpty || wanted.contains(h.prefix)))
+
+  // 1. Summary: which marker namespaces exist and how often.
+  println("\n--- MARKER PREFIXES (discovered) ---")
+  hits.groupBy(_.prefix).toList.sortBy(-_._2.size).foreach { case (p, hs) =>
+    println(s"  $p-*  (${hs.size} occurrences, ${hs.map(_.token).distinct.size} distinct)")
   }
 
-  println("\n--- JIRA REFERENCES BY TICKET ---")
-  val byTicket = jiraLiterals.groupBy { lit =>
-    val m = jiraPattern.r.findFirstIn(lit.code).getOrElse("UNKNOWN")
-    m
-  }
-
-  byTicket.toList.sortBy(_._1).foreach { case (ticket, lits) =>
-    println(s"\n  $ticket:")
-    lits.foreach { lit =>
-      println(s"    Context: ${lit.code.take(120)}")
-      println(s"    In: ${lit.method.fullName}")
-      println(s"    File: ${lit.file.name.l.headOption.getOrElse("unknown")}")
+  // 2. Detail by individual ticket/marker.
+  println("\n\n--- REFERENCES BY MARKER ---")
+  hits.groupBy(_.token).toList.sortBy(_._1).foreach { case (tok, hs) =>
+    println(s"\n  $tok:")
+    hs.distinct.foreach { h =>
+      println(s"    Context: ${h.context}")
+      println(s"    In: ${h.method}   File: ${h.file}")
     }
   }
 
-  // Also find REG-NNNN regulatory references
-  println("\n\n--- REGULATORY REFERENCES (REG-NNNN) ---")
-  val regLiterals = cpg.literal.l.filter { lit =>
-    lit.code.matches(".*REG-\\d+-\\d+.*")
-  }
-  regLiterals.foreach { lit =>
-    val ref = "REG-\\d+-\\d+".r.findFirstIn(lit.code).getOrElse("UNKNOWN")
-    println(s"\n  $ref:")
-    println(s"    Context: ${lit.code.take(120)}")
-    println(s"    In: ${lit.method.fullName}")
-  }
-
-  // Find WAVE-N references (evolution markers)
-  println("\n\n--- WAVE/ERA REFERENCES ---")
-  val waveLiterals = cpg.literal.l.filter { lit =>
-    lit.code.matches("(?i).*wave.*\\d+.*") || lit.code.matches(".*circa.*\\d+.*")
-  }
-  waveLiterals.foreach { lit =>
-    println(s"  ${lit.code.take(120)}")
-    println(s"    In: ${lit.method.fullName}")
+  // 3. Evolution / era markers (free-text, not TOKEN-NNN): "wave 2", "circa 2009", "phase 3".
+  println("\n\n--- EVOLUTION / ERA MARKERS ---")
+  cpg.literal.l.filter { lit =>
+    val s = lit.code
+    s.matches("(?i).*\\b(wave|phase|era|circa|legacy|v\\d|version)\\b.*\\d+.*")
+  }.map(_.code).distinct.sorted.foreach { code =>
+    println(s"  ${code.take(120)}")
   }
 }

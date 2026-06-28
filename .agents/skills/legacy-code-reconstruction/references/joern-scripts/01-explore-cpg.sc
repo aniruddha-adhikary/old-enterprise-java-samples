@@ -1,7 +1,7 @@
 // 01-explore-cpg.sc — Basic CPG exploration: what's in the graph?
-// Run: joern --script joern-workspace/scripts/01-explore-cpg.sc --param cpgFile=joern-workspace/bigcorp.cpg
+// Run: joern --script joern-workspace/scripts/01-explore-cpg.sc --param cpgFile=workspace.cpg
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

@@ -1,7 +1,7 @@
 // 02-domain-models.sc — Extract domain model structure: fields, types, relationships
 // Identifies core domain entities, their attributes, and inter-entity references
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

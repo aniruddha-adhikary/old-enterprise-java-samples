@@ -1,7 +1,7 @@
 // 05-architectural-patterns.sc — Identify enterprise patterns, design patterns, integration points
 // Detects J2EE patterns: DAO, DTO, Service Locator, Front Controller, Command, etc.
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

@@ -1,7 +1,7 @@
 // 06-commission-and-pricing.sc — Extract financial calculation logic
 // Identifies commission rates, pricing logic, settlement calculations, and financial thresholds
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

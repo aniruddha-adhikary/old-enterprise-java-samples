@@ -1,7 +1,7 @@
 // 08-anomalies-and-debt.sc — Find code smells, inconsistencies, and technical debt
 // These are crucial clues for understanding "what the code ACTUALLY does vs what it SHOULD do"
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

@@ -1,7 +1,7 @@
 // 04-data-flows.sc — Trace data flows: order lifecycle, message paths, DB interactions
 // Maps the complete journey of a trade order through the system
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)
@@ -21,10 +21,12 @@
     println(s"    Calls: ${directCalls.mkString(", ")}")
   }
 
-  // 2. JMS message flow — queue names and producers/consumers
+  // 2. JMS message flow — queue/topic names (generic: dotted UPPER tokens or queue-ish keywords)
   println("\n\n--- JMS MESSAGE QUEUES ---")
   cpg.literal.l.filter { lit =>
-    lit.code.contains("BIGCORP") || lit.code.contains("QUEUE") || lit.code.contains("queue")
+    val s = lit.code.replaceAll("\"", "")
+    s.matches("[A-Z][A-Z0-9]*(\\.[A-Z0-9]+){1,}") ||
+    s.toLowerCase.contains("queue") || s.toLowerCase.contains("topic")
   }.foreach { lit =>
     println(s"  Queue: ${lit.code}")
     println(s"    Used in: ${lit.method.fullName}")

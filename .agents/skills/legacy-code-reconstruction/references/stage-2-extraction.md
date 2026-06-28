@@ -6,15 +6,22 @@ Transform the raw analysis outputs from Stage 1 into structured requirements doc
 
 ## Inputs
 
+- The **project profile** from `00-calibrate` (root package, modules, rule interface, queues, status vocab, marker prefixes) — this grounds every prefix and name below
 - Joern analysis outputs (01 through 12 text files)
 - Graphify graph report and CLI access
 - Java source code (for cross-referencing exact values)
 - XML configs, properties files, SQL schema files
 
-## DO NOT Read
+Derive your requirement-area prefixes from the discovered **modules** (e.g. a `settlement` module → `FR-SET-*`). The `FR-ORD`/`FR-RUL`/… codes below are illustrative examples, not a fixed taxonomy.
 
-- README, docs, wikis, or any existing documentation (the point is code-only reconstruction)
-- Test files that describe expected behavior (this leaks requirements)
+## Source-of-truth discipline
+
+The code is the source of truth — it is what actually runs. Existing docs and tests often describe what the system was *supposed* to do, which may differ from what it does.
+
+- **If your goal is to understand/document a real system:** read docs and tests too, but treat them as *claims to verify against code*, not as ground truth. Where they disagree with the code, document the discrepancy — that gap is itself a valuable finding.
+- **If your goal is a controlled code-only reconstruction** (e.g. measuring how faithfully code alone reconstructs requirements, as in the worked example): deliberately withhold README/docs/wikis and behavior-describing tests so they cannot leak requirements. Note in the BRD that you did so.
+
+Decide which mode you are in before you start, and say so in the BRD's executive summary.
 
 ## Output 1: Business Requirements Document (BRD.md)
 
@@ -148,9 +155,9 @@ Structure the BRD as follows. Every requirement gets a unique testable ID.
 
 ### Why Both Formats?
 
-- **BRD.md** produces more readable, well-commented code when given to a builder agent (prose → natural code)
+- **BRD.md** produces more readable, well-commented code when given to a builder (prose → natural code)
 - **spec.json** produces more precise thresholds in test assertions (exact values for automated validation)
-- **Together** they scored 30/30 in our experiments; either alone scored 29.7-30/30
+- In the worked example, BRD + spec.json together scored 30/30; either format alone scored 29.7–30/30 — i.e. both are strong and the combination gave the most consistent results across builders. (n=1 system; treat as directional.)
 
 ## Quality Checklist
 

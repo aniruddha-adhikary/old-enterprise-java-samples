@@ -1,7 +1,7 @@
 // 11-sql-schema.sc — Extract complete database schema from DDL and DML statements
 // Reconstructs table definitions from CREATE TABLE, INSERT, SELECT patterns
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)

@@ -1,7 +1,7 @@
 // 03-business-rules.sc — Extract business rules: conditions, thresholds, validations
 // Identifies rule classes, conditional logic, magic numbers, and business constraints
 
-@main def main(cpgFile: String = "joern-workspace/bigcorp.cpg") = {
+@main def main(cpgFile: String = "workspace.cpg") = {
   importCpg(cpgFile)
 
   println("=" * 80)
@@ -62,10 +62,12 @@
       }
     }
 
-    // Find all hardcoded values (magic numbers and strings)
-    val allLiterals = td.method.ast.isLiteral.l.filter(_.code.length > 1)
+    // Find all hardcoded values (magic numbers and strings).
+    // Keep ALL numeric literals — single-digit thresholds matter (e.g. T+3 settlement,
+    // retry counts). Only trim trivial 1-char strings, not numbers.
+    val allLiterals = td.method.ast.isLiteral.l
     val numericLiterals = allLiterals.filter(_.typeFullName != "java.lang.String").map(_.code).distinct
-    val stringLiterals = allLiterals.filter(_.typeFullName == "java.lang.String").map(_.code).distinct
+    val stringLiterals = allLiterals.filter(_.typeFullName == "java.lang.String").filter(_.code.length > 1).map(_.code).distinct
 
     if (numericLiterals.nonEmpty) {
       println(s"    Magic numbers: ${numericLiterals.mkString(", ")}")
