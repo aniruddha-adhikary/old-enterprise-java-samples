@@ -69,6 +69,9 @@ import com.bigcorp.risk.scheduler.RiskScheduler;
 import com.bigcorp.tradedesk.api.ClientPortalAPI;
 import com.bigcorp.settlement.regulatory.RegulatoryExportJob;
 import com.bigcorp.common.logging.BigCorpLogger;
+import com.bigcorp.connector.ConnectorException;
+import com.bigcorp.connector.account.AccountRecord;
+import com.bigcorp.connector.account.MainframeAccountService;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 
@@ -199,6 +202,9 @@ public class EndToEndTest {
 
             // Phase 24: Wave 15 — Logging/Observability Cleanup (architect)
             phase24_loggingCleanup();
+
+            // Phase 25: Wave 16 — JCA Connector / Mainframe Account Verification (contractor)
+            phase25_wave16ConnectorMainframe();
 
         } catch (Exception e) {
             System.err.println("FATAL: Test suite crashed: " + e.getMessage());
@@ -3088,6 +3094,119 @@ public class EndToEndTest {
         System.out.println();
     }
 
+    // Phase 25: Wave 16 — JCA Connector / Mainframe Account Verification
+    // Contractor module: connector/ — mainframe back-office integration via
+    // hand-rolled CCI-style API with DB fallback.
+
+    private static void phase25_wave16ConnectorMainframe() {
+        System.out.println("=== Phase 25: Wave 16 — JCA Connector / Mainframe Account Verification (contractor) ===");
+        System.out.println();
+
+        // T25.1 — MainframeAccountService instantiates successfully
+        try {
+            MainframeAccountService svc = new MainframeAccountService();
+            assertTest("T25.1", "MainframeAccountService instantiates (RA config loads)",
+                svc != null && svc.isEnabled(),
+                "enabled=" + (svc != null ? svc.isEnabled() : "null"));
+        } catch (Exception e) {
+            assertTest("T25.1", "MainframeAccountService instantiates", false, e.getMessage());
+        }
+
+        // T25.2 — verifyAccount returns non-null AccountRecord for existing client via DB fallback
+        try {
+            MainframeAccountService svc = new MainframeAccountService();
+            AccountRecord record = svc.verifyAccount("C001");
+            boolean ok = record != null
+                && "C001".equals(record.getAccountNumber())
+                && record.getCreditLimit() > 0
+                && AccountRecord.STATUS_ACTIVE.equals(record.getAccountStatus());
+            assertTest("T25.2", "verifyAccount(C001) returns ACTIVE AccountRecord via DB fallback",
+                ok,
+                record != null ? record.toString() : "null");
+        } catch (Exception e) {
+            assertTest("T25.2", "verifyAccount(C001) returns AccountRecord", false, e.getMessage());
+        }
+
+        // T25.3 — verifyAccount returns null for non-existent client
+        try {
+            MainframeAccountService svc = new MainframeAccountService();
+            AccountRecord record = svc.verifyAccount("ZZZZ-NO-SUCH-CLIENT");
+            assertTest("T25.3", "verifyAccount for non-existent client returns null",
+                record == null,
+                "result=" + record);
+        } catch (Exception e) {
+            assertTest("T25.3", "verifyAccount for non-existent client", false, e.getMessage());
+        }
+
+        // T25.4 — Order rejected when mainframe reports account suspended (KILL_SWITCH='Y')
+        // Set KILL_SWITCH='Y' for client C002 temporarily, submit order, verify rejection
+        Connection conn = null;
+        Statement stmt = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            stmt = conn.createStatement();
+            // Save original KILL_SWITCH value for C002
+            ResultSet rs = stmt.executeQuery(
+                "SELECT KILL_SWITCH FROM CLIENTS WHERE CLIENT_ID = 'C002'");
+            String originalKS = null;
+            if (rs.next()) {
+                originalKS = rs.getString("KILL_SWITCH");
+            }
+            ConnectionHelper.closeQuietly(rs);
+
+            // Set KILL_SWITCH='Y' so connector reports SUSPENDED
+            stmt.executeUpdate("UPDATE CLIENTS SET KILL_SWITCH = 'Y' WHERE CLIENT_ID = 'C002'");
+
+            // Verify the connector sees it as SUSPENDED
+            MainframeAccountService svc = new MainframeAccountService();
+            AccountRecord record = svc.verifyAccount("C002");
+            boolean isSuspended = record != null
+                && AccountRecord.STATUS_SUSPENDED.equals(record.getAccountStatus());
+            assertTest("T25.4", "KILL_SWITCH='Y' maps to STATUS_SUSPENDED in AccountRecord",
+                isSuspended,
+                record != null ? "status=" + record.getAccountStatus() : "null");
+
+            // Restore KILL_SWITCH
+            stmt.executeUpdate("UPDATE CLIENTS SET KILL_SWITCH = '"
+                + (originalKS != null ? originalKS : "N") + "' WHERE CLIENT_ID = 'C002'");
+
+        } catch (Exception e) {
+            assertTest("T25.4", "KILL_SWITCH='Y' maps to SUSPENDED", false, e.getMessage());
+        } finally {
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+        }
+
+        // T25.5 — Full order flow: order for suspended account is rejected by connector
+        // Uses a different approach: submit order via MQ for a client we mark as suspended
+        conn = null;
+        stmt = null;
+        try {
+            conn = ConnectionHelper.getConnection();
+            stmt = conn.createStatement();
+            // Set C003 as suspended
+            stmt.executeUpdate("UPDATE CLIENTS SET KILL_SWITCH = 'Y' WHERE CLIENT_ID = 'C003'");
+
+            // Submit order through the full flow
+            String testOrderId = "ORD-TEST-CONN-001";
+            submitAndVerify("T25.5",
+                "Order rejected when EIS reports account suspended (KILL_SWITCH='Y')",
+                testOrderId, "C003", "MSFT", 100, "BUY", 50.0,
+                "REJECTED");
+
+            // Restore
+            stmt.executeUpdate("UPDATE CLIENTS SET KILL_SWITCH = 'N' WHERE CLIENT_ID = 'C003'");
+
+        } catch (Exception e) {
+            assertTest("T25.5", "Order rejected for suspended account", false, e.getMessage());
+        } finally {
+            ConnectionHelper.closeQuietly(stmt);
+            ConnectionHelper.closeQuietly(conn);
+        }
+
+        System.out.println();
+    }
+
     /**
      * Simple test rule used by Phase 14 priority ordering tests.
      * Always passes, records its name in context messages via execute().
@@ -3131,6 +3250,8 @@ public class EndToEndTest {
             stmt.executeUpdate("DELETE FROM SETTLEMENT_RECORDS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM NOTIFICATIONS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
             stmt.executeUpdate("DELETE FROM TRADE_ORDERS WHERE ORDER_ID LIKE 'ORD-TEST-%' OR ORDER_ID LIKE 'ORD-MULTI-%'");
+            // Reset KILL_SWITCH flags that Phase 25 (connector) tests may have changed
+            stmt.executeUpdate("UPDATE CLIENTS SET KILL_SWITCH = 'N' WHERE CLIENT_ID IN ('C002', 'C003')");
             System.out.println("Cleaned up test data from previous runs.");
         } catch (Exception e) {
             // not fatal - maybe tables are empty

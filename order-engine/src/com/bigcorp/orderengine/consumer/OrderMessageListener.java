@@ -18,6 +18,9 @@ import com.bigcorp.common.rules.impl.DailyVolumeLimitRule;
 import com.bigcorp.common.rules.impl.WashTradeDetectionRule;
 import com.bigcorp.common.rules.impl.KYCStatusRule;
 import com.bigcorp.common.xml.XmlHelper;
+import com.bigcorp.connector.ConnectorException;
+import com.bigcorp.connector.account.AccountRecord;
+import com.bigcorp.connector.account.MainframeAccountService;
 import com.bigcorp.orderengine.dao.OrderDAO;
 import com.bigcorp.orderengine.soap.PricingServiceClient;
 
@@ -70,6 +73,12 @@ public class OrderMessageListener {
     // in addition to the rule (REG-2005-003)
     private static final int MANUAL_VOLUME_LIMIT = 50000;
 
+    // JIRA-7200: Mainframe back-office integration via JCA resource adapter
+    // Contractor bolt-on — verifies client account/credit against the EIS
+    // before order processing. Duplicates some of the existing isActive()
+    // checks, but the mainframe is the "source of truth" per the vendor.
+    private MainframeAccountService mainframeAccountService;
+
     private boolean running = false;
     private OrderDAO orderDAO;
     private PricingServiceClient pricingClient;
@@ -84,6 +93,18 @@ public class OrderMessageListener {
         this.orderDAO = new OrderDAO();
         this.pricingClient = new PricingServiceClient();
         this.ruleEngine = RuleEngine.getInstance();
+
+        // JIRA-7200: Initialize mainframe connector (contractor integration)
+        // If the connector fails to initialize, we log a warning and continue
+        // without it — the existing DB-based checks are still in place.
+        try {
+            this.mainframeAccountService = new MainframeAccountService();
+            System.out.println("Mainframe account service initialized (JIRA-7200)");
+        } catch (ConnectorException ce) {
+            System.err.println("WARN: Could not initialize mainframe connector: "
+                + ce.getMessage() + " — EIS checks disabled");
+            this.mainframeAccountService = null;
+        }
     }
 
     /**
@@ -224,6 +245,40 @@ public class OrderMessageListener {
             System.err.println("WARN: Client " + client.getClientId() + " is inactive");
             rejectOrder(order, "Client account is inactive", client);
             return;
+        }
+
+        // JIRA-7200: Mainframe back-office account verification (contractor bolt-on)
+        // This duplicates some of the isActive() check above, but the vendor
+        // insists the mainframe EIS is the "source of truth" for account status
+        // and credit limits. We keep both checks because removing the DB-based
+        // one would require a risk assessment sign-off. — contractor note
+        if (mainframeAccountService != null && mainframeAccountService.isEnabled()) {
+            try {
+                AccountRecord acctRecord = mainframeAccountService.verifyAccount(order.getClientId());
+                if (acctRecord != null) {
+                    if (!acctRecord.isAccountActive()) {
+                        System.err.println("WARN: Mainframe reports account "
+                            + order.getClientId() + " status=" + acctRecord.getAccountStatus());
+                        rejectOrder(order,
+                            "EIS account verification failed: status=" + acctRecord.getAccountStatus(),
+                            client);
+                        return;
+                    }
+                    // Optionally tighten effective credit limit if mainframe limit is lower
+                    if (acctRecord.getCreditLimit() < client.getMaxOrderValue()) {
+                        System.out.println("[CONNECTOR] Tightening credit limit for "
+                            + client.getClientId() + " from " + client.getMaxOrderValue()
+                            + " to " + acctRecord.getCreditLimit() + " (per mainframe)");
+                        client.setMaxOrderValue(acctRecord.getCreditLimit());
+                    }
+                }
+            } catch (ConnectorException ce) {
+                // Don't reject the order if the connector fails — fall through
+                // to the existing rule engine checks (belt and suspenders)
+                System.err.println("WARN: Mainframe account check failed for "
+                    + order.getClientId() + ": " + ce.getMessage()
+                    + " — proceeding with DB-only validation");
+            }
         }
 
         // 3. run rule engine

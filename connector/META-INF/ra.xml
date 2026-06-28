@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE connector PUBLIC
+  "-//Sun Microsystems, Inc.//DTD Connector 1.0//EN"
+  "http://java.sun.com/dtd/connector_1_0.dtd">
+
+<!--
+  J2EE Connector Architecture (JCA) 1.0 Deployment Descriptor
+  
+  Vendor: Apex Consulting
+  Resource Adapter: BigCorp Mainframe Account Connector
+  
+  Deployed into the application server via the .rar archive.
+  The container reads this descriptor to instantiate the
+  ManagedConnectionFactory and register it in JNDI.
+  
+  NOTE: In the embedded/demo environment there is no JCA container,
+  so this file is just packaging metadata. The application code
+  instantiates MainframeConnectionFactory directly.
+-->
+<connector>
+    <display-name>BigCorp Mainframe Account Connector</display-name>
+    <description>
+        JCA resource adapter for connecting to the back-office
+        mainframe CICS/COBOL system. Provides account inquiry
+        (credit limit, account status) via the ACCT-INQ
+        transaction program.
+    </description>
+    <vendor-name>Apex Consulting</vendor-name>
+    <spec-version>1.0</spec-version>
+    <eis-type>CICS Transaction Server</eis-type>
+    <version>1.0</version>
+
+    <resourceadapter>
+        <managedconnectionfactory-class>
+            com.bigcorp.connector.cci.MainframeConnectionFactory
+        </managedconnectionfactory-class>
+        <connectionfactory-interface>
+            com.bigcorp.connector.cci.MainframeConnectionFactory
+        </connectionfactory-interface>
+        <connectionfactory-impl-class>
+            com.bigcorp.connector.cci.MainframeConnectionFactory
+        </connectionfactory-impl-class>
+        <connection-interface>
+            com.bigcorp.connector.cci.MainframeConnection
+        </connection-interface>
+        <connection-impl-class>
+            com.bigcorp.connector.cci.MainframeConnection
+        </connection-impl-class>
+        <transaction-support>NoTransaction</transaction-support>
+
+        <config-property>
+            <config-property-name>EisHost</config-property-name>
+            <config-property-type>java.lang.String</config-property-type>
+            <config-property-value>localhost</config-property-value>
+        </config-property>
+        <config-property>
+            <config-property-name>EisPort</config-property-name>
+            <config-property-type>java.lang.Integer</config-property-type>
+            <config-property-value>3270</config-property-value>
+        </config-property>
+        <config-property>
+            <config-property-name>TransactionProgram</config-property-name>
+            <config-property-type>java.lang.String</config-property-type>
+            <config-property-value>ACCT-INQ</config-property-value>
+        </config-property>
+        <config-property>
+            <config-property-name>ConnectionTimeoutMs</config-property-name>
+            <config-property-type>java.lang.Integer</config-property-type>
+            <config-property-value>3000</config-property-value>
+        </config-property>
+
+        <authentication-mechanism>
+            <authentication-mechanism-type>BasicPassword</authentication-mechanism-type>
+            <credential-interface>javax.resource.spi.security.PasswordCredential</credential-interface>
+        </authentication-mechanism>
+
+        <reauthentication-support>false</reauthentication-support>
+    </resourceadapter>
+</connector>

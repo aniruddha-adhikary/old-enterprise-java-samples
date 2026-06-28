@@ -154,7 +154,8 @@
     </target>
 
     <!-- Compile order-engine -->
-    <target name="compile-orderengine" depends="compile-common"
+    <!-- JIRA-7200: now depends on compile-connector for mainframe account verification -->
+    <target name="compile-orderengine" depends="compile-common,compile-connector"
             description="Compile order-engine">
         <mkdir dir="${build.dir}/order-engine"/>
         <javac srcdir="${orderengine.dir}/src"
@@ -162,7 +163,10 @@
                source="${javac.source}" target="${javac.target}"
                debug="${javac.debug}"
                includeantruntime="false">
-            <classpath refid="app.classpath"/>
+            <classpath>
+                <path refid="app.classpath"/>
+                <pathelement location="${build.dir}/connector"/>
+            </classpath>
         </javac>
     </target>
 
@@ -279,6 +283,29 @@
         </javac>
     </target>
 
+    <!-- Compile connector (contractor module — JCA mainframe resource adapter) -->
+    <!-- Vendor: Apex Consulting — see connector/META-INF/ra.xml -->
+    <target name="compile-connector" depends="compile-common"
+            description="Compile connector resource adapter module">
+        <mkdir dir="${build.dir}/connector"/>
+        <javac srcdir="${connector.dir}/src"
+               destdir="${build.dir}/connector"
+               source="${javac.source}" target="${javac.target}"
+               debug="${javac.debug}"
+               includeantruntime="false">
+            <classpath>
+                <path refid="master.classpath"/>
+                <pathelement location="${build.dir}/common-lib"/>
+            </classpath>
+        </javac>
+        <!-- copy RA config properties to build output -->
+        <copy todir="${build.dir}/connector" failonerror="false">
+            <fileset dir="${connector.dir}/config">
+                <include name="*.properties"/>
+            </fileset>
+        </copy>
+    </target>
+
     <!-- Compile demo -->
     <target name="compile-demo" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit"
             description="Compile demo runner">
@@ -302,7 +329,7 @@
     </target>
 
     <!-- Compile test suite -->
-    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk"
+    <target name="compile-test" depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk,compile-connector"
             description="Compile end-to-end test suite">
         <mkdir dir="${build.dir}/test"/>
         <javac srcdir="test/src"
@@ -322,13 +349,14 @@
                 <pathelement location="${build.dir}/derivatives-engine"/>
                 <pathelement location="${build.dir}/reporting-service"/>
                 <pathelement location="${build.dir}/risk-engine"/>
+                <pathelement location="${build.dir}/connector"/>
             </classpath>
         </javac>
     </target>
 
     <!-- Compile all -->
     <target name="compile" 
-            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk,compile-demo"
+            depends="compile-common,compile-tradedesk,compile-orderengine,compile-pricing,compile-notifications,compile-settlement,compile-audit,compile-derivatives,compile-reporting,compile-risk,compile-connector,compile-demo"
             description="Compile all modules"/>
 
     <!-- Package common-lib as JAR -->
@@ -381,9 +409,23 @@
         </war>
     </target>
 
+    <!-- Package connector as RAR (JCA resource adapter archive) -->
+    <!-- The .rar is essentially a JAR with META-INF/ra.xml -->
+    <target name="rar-connector" depends="compile-connector"
+            description="Package connector resource adapter as .rar">
+        <mkdir dir="${dist.dir}"/>
+        <jar destfile="${dist.dir}/connector.rar">
+            <fileset dir="${build.dir}/connector"/>
+            <metainf dir="${connector.dir}/META-INF">
+                <include name="ra.xml"/>
+            </metainf>
+        </jar>
+        <echo message="Packaged connector resource adapter: ${dist.dir}/connector.rar"/>
+    </target>
+
     <!-- Package all -->
-    <target name="package" depends="jar-common,war-tradedesk,war-pricing"
-            description="Create all JARs and WARs"/>
+    <target name="package" depends="jar-common,war-tradedesk,war-pricing,rar-connector"
+            description="Create all JARs, WARs, and RARs"/>
 
     <!-- Run the end-to-end demo -->
     <target name="run-demo" depends="compile"
@@ -398,6 +440,7 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
+                <pathelement location="${build.dir}/connector"/>
                 <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>
@@ -420,6 +463,7 @@
                 <pathelement location="${build.dir}/derivatives-engine"/>
                 <pathelement location="${build.dir}/reporting-service"/>
                 <pathelement location="${build.dir}/risk-engine"/>
+                <pathelement location="${build.dir}/connector"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
@@ -442,6 +486,7 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
+                <pathelement location="${build.dir}/connector"/>
                 <pathelement location="${build.dir}/test"/>
             </classpath>
         </java>
@@ -461,6 +506,7 @@
                 <pathelement location="${build.dir}/notification-gateway"/>
                 <pathelement location="${build.dir}/settlement-gateway"/>
                 <pathelement location="${build.dir}/audit-service"/>
+                <pathelement location="${build.dir}/connector"/>
                 <pathelement location="${build.dir}/demo"/>
             </classpath>
         </java>
